@@ -41,7 +41,7 @@ bytes = "1"
 rustls-native-certs = "0.8"
 
 # mDNS discovery (optional)
-mdns-sd = { version = "0.12", optional = true }
+mdns-sd = { version = "0.19", optional = true }
 
 # Task lifecycle + IO utilities
 tokio-util = { version = "0.7", features = ["rt", "io"] }
