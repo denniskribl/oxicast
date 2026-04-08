@@ -1,0 +1,53 @@
+---
+title: oxicast
+template: splash
+hero:
+  tagline: Async Google Cast client for Rust. Discover, connect, and control Chromecast devices — powered by tokio.
+  actions:
+    - text: Get Started
+      link: /getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: GitHub
+      link: https://github.com/denniskribl/oxicast
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Steps } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Async-native" icon="rocket">
+    Built on tokio with full async/await. Commands respond instantly — no heartbeat cycle delays.
+  </Card>
+  <Card title="Auto-reconnect" icon="approve-check-circle">
+    Exponential backoff with jitter. Heartbeat timeout, writer failure, and reader errors all trigger recovery.
+  </Card>
+  <Card title="Reactive status" icon="information">
+    Watch channels for always-fresh media and receiver state. No polling, no draining required.
+  </Card>
+  <Card title="Thread-safe" icon="puzzle">
+    Clone + Send + Sync by design. Share the client across tasks freely.
+  </Card>
+</CardGrid>
+
+---
+
+## Quick start
+
+<Steps>
+1. **Install** oxicast and tokio in your Cargo.toml
+2. **Connect** to a device by IP or mDNS discovery -> [Getting Started](/getting-started/)
+3. **Launch** the Default Media Receiver and load media
+4. **React** to events via `next_event()` or `watch` channels
+5. **Control** playback with `play()`, `pause()`, `seek()`, `set_volume()`
+</Steps>
+
+```rust
+let client = CastClient::connect("192.168.1.100", 8009).await?;
+client.launch_app(&CastApp::DefaultMediaReceiver).await?;
+client.load_media(&MediaInfo::new(url, "video/mp4"), true, 0.0).await?;
+client.pause().await?;
+client.seek(60.0).await?;
+client.play().await?;
+```

@@ -1,0 +1,26 @@
+name: Bug Report
+description: Report a bug in oxicast
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal code or steps to reproduce the issue.
+  - type: input
+    id: version
+    attributes:
+      label: oxicast version
+      placeholder: "0.1.0"
+  - type: input
+    id: device
+    attributes:
+      label: Cast device
+      placeholder: "Chromecast 3rd gen / Google Home / Sony BRAVIA"

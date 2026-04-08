@@ -1,0 +1,16 @@
+name: Feature Request
+description: Suggest a feature for oxicast
+labels: [enhancement]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What would you like oxicast to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any workarounds or alternatives you've tried?

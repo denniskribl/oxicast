@@ -1,0 +1,71 @@
+[package]
+name = "oxicast"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "Async Google Cast (Chromecast) client for Rust, built on tokio"
+keywords = ["chromecast", "cast", "google-cast", "media", "tokio"]
+repository = "https://github.com/denniskribl/oxicast"
+homepage = "https://github.com/denniskribl/oxicast"
+categories = ["multimedia", "network-programming", "asynchronous"]
+documentation = "https://docs.rs/oxicast"
+readme = "README.md"
+exclude = ["website/", "docs/", ".github/", "deny.toml"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros", "io-util", "fs"] }
+
+# TLS
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "tls12"] }
+
+# Protobuf
+prost = "0.13"
+
+# JSON payloads
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+
+# Byte manipulation
+bytes = "1"
+
+# Native root certs (for verify_tls mode)
+rustls-native-certs = "0.8"
+
+# mDNS discovery (optional)
+mdns-sd = { version = "0.12", optional = true }
+
+# Task lifecycle + IO utilities
+tokio-util = { version = "0.7", features = ["rt", "io"] }
+
+# Local file server (optional)
+axum = { version = "0.8", optional = true, default-features = false, features = ["tokio", "http1"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[build-dependencies]
+prost-build = "0.13"
+
+[features]
+default = ["discovery"]
+discovery = ["dep:mdns-sd"]
+serve = ["dep:axum"]
+testing = []
+
+[[test]]
+name = "mock_device"
+required-features = ["testing"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
