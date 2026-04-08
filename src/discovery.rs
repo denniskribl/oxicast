@@ -80,7 +80,7 @@ fn discover_streaming(
         match receiver.recv_timeout(Duration::from_millis(200)) {
             Ok(ServiceEvent::ServiceResolved(info)) => {
                 let ip = match info.get_addresses_v4().iter().next() {
-                    Some(addr) => std::net::IpAddr::V4(**addr),
+                    Some(addr) => std::net::IpAddr::V4(*addr),
                     None => continue,
                 };
 
@@ -153,7 +153,7 @@ fn discover_blocking(timeout: Duration) -> Result<Vec<DeviceInfo>> {
         match receiver.recv_timeout(Duration::from_millis(200)) {
             Ok(ServiceEvent::ServiceResolved(info)) => {
                 let ip = match info.get_addresses_v4().iter().next() {
-                    Some(addr) => std::net::IpAddr::V4(**addr),
+                    Some(addr) => std::net::IpAddr::V4(*addr),
                     None => continue,
                 };
 
