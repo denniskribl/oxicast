@@ -13,6 +13,7 @@ pub fn load(
     media: &MediaInfo,
     autoplay: bool,
     current_time: f64,
+    custom_data: Option<&serde_json::Value>,
 ) -> CastMessage {
     let mut media_obj = serde_json::json!({
         "contentId": media.content_id,
@@ -38,7 +39,7 @@ pub fn load(
         "media": media_obj,
         "autoplay": autoplay,
         "currentTime": current_time,
-        "customData": {},
+        "customData": custom_data.unwrap_or(&serde_json::json!({})),
     });
 
     build_message(ns::NS_MEDIA, ns::SENDER_ID, transport_id, &payload.to_string())
@@ -305,7 +306,7 @@ mod tests {
             studio: Some("Studio X".into()),
             images: vec![Image { url: "http://img.jpg".into(), width: Some(800), height: None }],
         });
-        let msg = load(1, "t", "s", &media, true, 0.0);
+        let msg = load(1, "t", "s", &media, true, 0.0, None);
         let p = parse_payload(&msg);
         assert_eq!(p["media"]["metadata"]["metadataType"], 1);
         assert_eq!(p["media"]["metadata"]["title"], "Test Movie");
@@ -317,7 +318,7 @@ mod tests {
     #[test]
     fn test_load_with_duration() {
         let media = MediaInfo::new("url", "video/mp4").duration(120.5);
-        let msg = load(1, "t", "s", &media, false, 10.0);
+        let msg = load(1, "t", "s", &media, false, 10.0, None);
         let p = parse_payload(&msg);
         assert_eq!(p["media"]["duration"], 120.5);
         assert_eq!(p["autoplay"], false);
@@ -327,9 +328,32 @@ mod tests {
     #[test]
     fn test_load_live_stream_type() {
         let media = MediaInfo::live("url", "application/x-mpegURL");
-        let msg = load(1, "t", "s", &media, true, 0.0);
+        let msg = load(1, "t", "s", &media, true, 0.0, None);
         let p = parse_payload(&msg);
         assert_eq!(p["media"]["streamType"], "LIVE");
+    }
+
+    #[test]
+    fn test_load_with_custom_data() {
+        let media = MediaInfo::new("url", "video/mp4");
+        let custom = serde_json::json!({
+            "positionOffset": 300.0,
+            "realDuration": 7200.0,
+            "isLive": false
+        });
+        let msg = load(1, "t", "s", &media, true, 0.0, Some(&custom));
+        let p = parse_payload(&msg);
+        assert_eq!(p["customData"]["positionOffset"], 300.0);
+        assert_eq!(p["customData"]["realDuration"], 7200.0);
+        assert_eq!(p["customData"]["isLive"], false);
+    }
+
+    #[test]
+    fn test_load_without_custom_data() {
+        let media = MediaInfo::new("url", "video/mp4");
+        let msg = load(1, "t", "s", &media, true, 0.0, None);
+        let p = parse_payload(&msg);
+        assert_eq!(p["customData"], serde_json::json!({}));
     }
 
     #[test]

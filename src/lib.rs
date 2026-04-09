@@ -24,6 +24,7 @@
 //!     &MediaInfo::new("https://example.com/video.mp4", "video/mp4"),
 //!     true,
 //!     0.0,
+//!     None, // custom_data for Custom Web Receiver
 //! ).await?;
 //!
 //! // Control playback
@@ -55,7 +56,7 @@
 //! ## Feature flags
 //!
 //! - **`discovery`** (default) — mDNS device scanning via [`discovery`] module
-//! - **`serve`** — HTTP file server for casting local files via [`serve`] module
+//! - **`serve`** — HTTP file server for casting local files via the `serve` module
 
 pub(crate) mod channel;
 pub(crate) mod client;

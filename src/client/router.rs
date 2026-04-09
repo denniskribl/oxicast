@@ -129,7 +129,7 @@ pub(crate) async fn route(
                     }
                     MediaMessageType::LoadFailed => {
                         let item_id = json.get("itemId").and_then(|v| v.as_i64()).unwrap_or(0);
-                        tracing::warn!(
+                        tracing::debug!(
                             "LOAD_FAILED for item {item_id}, requestId={}",
                             json.get("requestId").and_then(|r| r.as_u64()).unwrap_or(0)
                         );
@@ -141,7 +141,7 @@ pub(crate) async fn route(
                         }
                     }
                     MediaMessageType::LoadCancelled => {
-                        tracing::warn!("LOAD_CANCELLED");
+                        tracing::debug!("LOAD_CANCELLED");
                         if let Some(request_id) = json.get("requestId").and_then(|r| r.as_u64()) {
                             if request_id > 0 {
                                 request_tracker.resolve(request_id as u32, json.clone()).await;
@@ -151,7 +151,7 @@ pub(crate) async fn route(
                     MediaMessageType::InvalidRequest => {
                         let reason =
                             json.get("reason").and_then(|r| r.as_str()).unwrap_or("unknown");
-                        tracing::warn!("invalid request: {reason}");
+                        tracing::debug!("invalid request: {reason}");
                         if let Some(request_id) = json.get("requestId").and_then(|r| r.as_u64()) {
                             if request_id > 0 {
                                 request_tracker.resolve(request_id as u32, json.clone()).await;

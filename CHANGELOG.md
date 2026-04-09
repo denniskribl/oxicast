@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-04-09
+
+### Changed
+- **Breaking:** `CastClient::load_media` now takes a fourth `custom_data: Option<&serde_json::Value>` argument for Custom Web Receiver integrations.
+- Added support to pass `customData` in LOAD requests (falls back to `{}` when omitted).
+- Updated examples, docs, and API snippets to use the new `load_media(..., None)` call shape.
+
 ## [0.0.1] - 2026-04-08
 
 ### Added

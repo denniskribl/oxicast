@@ -72,7 +72,7 @@ async fn main() -> oxicast::Result<()> {
     let media = MediaInfo::new(&url, &content_type).stream_type(StreamType::Buffered);
 
     println!("Loading: {url}");
-    let status = client.load_media(&media, true, 0.0).await?;
+    let status = client.load_media(&media, true, 0.0, None).await?;
     println!("Loaded! State: {:?}, Duration: {:?}s", status.player_state, status.duration);
 
     // Listen for events

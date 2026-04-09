@@ -126,7 +126,7 @@ async fn main() {
     };
 
     let load_result =
-        step!("Load media (Big Buck Bunny)", client.load_media(&media, true, 0.0).await);
+        step!("Load media (Big Buck Bunny)", client.load_media(&media, true, 0.0, None).await);
 
     if let Some(ref status) = load_result {
         println!("    State: {:?}, Duration: {:?}s", status.player_state, status.duration);

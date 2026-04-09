@@ -46,7 +46,7 @@ import { Card, CardGrid, Steps } from '@astrojs/starlight/components';
 ```rust
 let client = CastClient::connect("192.168.1.100", 8009).await?;
 client.launch_app(&CastApp::DefaultMediaReceiver).await?;
-client.load_media(&MediaInfo::new(url, "video/mp4"), true, 0.0).await?;
+client.load_media(&MediaInfo::new(url, "video/mp4"), true, 0.0, None).await?;
 client.pause().await?;
 client.seek(60.0).await?;
 client.play().await?;

@@ -80,6 +80,7 @@ impl TaskHandles {
 ///     &oxicast::MediaInfo::new("https://example.com/video.mp4", "video/mp4"),
 ///     true,
 ///     0.0,
+///     None,
 /// ).await?;
 ///
 /// while let Some(event) = client.next_event().await {
@@ -438,27 +439,46 @@ impl CastClient {
         let (id, rx) = self.inner.request_tracker.register().await;
         self.send(channel::receiver::launch_app(id, app.app_id())).await?;
         let json = self.inner.request_tracker.wait_for(id, rx).await?;
+        tracing::debug!("launch_app response: {}", json);
         Self::check_device_error(&json)?;
 
-        let status = router::parse_receiver_status_from_json(&json)
-            .ok_or_else(|| Error::LaunchFailed { reason: "no status in response".into() })?;
+        // Custom receivers may take longer to load. If the first response doesn't
+        // contain the app, wait for a subsequent RECEIVER_STATUS that does.
+        let target_id = app.app_id().to_string();
 
-        let target_id = app.app_id();
-        let app_info =
-            status.applications.into_iter().find(|a| a.app_id == target_id).ok_or_else(|| {
-                Error::LaunchFailed {
-                    reason: format!("app {target_id} not found in receiver status"),
+        let status = router::parse_receiver_status_from_json(&json);
+        if let Some(status) = status {
+            if let Some(app_info) = status.applications.into_iter().find(|a| a.app_id == target_id) {
+                self.send(channel::connection::connect_msg(&app_info.transport_id)).await?;
+                *self.inner.transport_id.lock().await = Some(app_info.transport_id.clone());
+                *self.inner.session_id.lock().await = Some(app_info.session_id.clone());
+                return Ok(app_info);
+            }
+        }
+
+        // App not in first response — wait for a status update (custom receiver loading)
+        tracing::debug!("launch_app: app not in first response, waiting for status update...");
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
+        while tokio::time::Instant::now() < deadline {
+            if let Some(event) = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                self.next_event(),
+            ).await.ok().flatten() {
+                if let CastEvent::ReceiverStatusChanged(ref rs) = event
+                    && let Some(app_info) = rs.applications.iter().find(|a| a.app_id == target_id)
+                {
+                    let app_info = app_info.clone();
+                    self.send(channel::connection::connect_msg(&app_info.transport_id)).await?;
+                    *self.inner.transport_id.lock().await = Some(app_info.transport_id.clone());
+                    *self.inner.session_id.lock().await = Some(app_info.session_id.clone());
+                    return Ok(app_info);
                 }
-            })?;
+            }
+        }
 
-        // Connect to the app's transport
-        self.send(channel::connection::connect_msg(&app_info.transport_id)).await?;
-
-        // Store transport and session IDs
-        *self.inner.transport_id.lock().await = Some(app_info.transport_id.clone());
-        *self.inner.session_id.lock().await = Some(app_info.session_id.clone());
-
-        Ok(app_info)
+        Err(Error::LaunchFailed {
+            reason: format!("app {target_id} not found after launch (timeout)"),
+        })
     }
 
     /// Stop the specified application.
@@ -501,11 +521,15 @@ impl CastClient {
     ///
     /// Requires an app to be running (call [`launch_app`](Self::launch_app) first).
     /// Returns the initial media status after the load command.
+    ///
+    /// Pass `custom_data` to send application-specific data to a Custom Web Receiver
+    /// (read via `setMessageInterceptor` for `MessageType.LOAD`).
     pub async fn load_media(
         &self,
         media: &MediaInfo,
         autoplay: bool,
         current_time: f64,
+        custom_data: Option<&serde_json::Value>,
     ) -> Result<MediaStatus> {
         let transport_id = self.get_transport_id().await?;
         let session_id = self.get_session_id().await?;
@@ -518,6 +542,7 @@ impl CastClient {
             media,
             autoplay,
             current_time,
+            custom_data,
         ))
         .await?;
         let json = self.inner.request_tracker.wait_for(id, rx).await?;
@@ -712,7 +737,7 @@ impl CastClient {
         let server = crate::serve::FileServer::start("0.0.0.0:0").await?;
         let url = server.serve_file(path, content_type)?;
         let media = MediaInfo::new(&url, content_type);
-        let status = self.load_media(&media, autoplay, current_time).await?;
+        let status = self.load_media(&media, autoplay, current_time, None).await?;
         Ok((server, status))
     }
 
@@ -779,6 +804,10 @@ impl CastClient {
                 let reason = json.get("reason").and_then(|r| r.as_str()).unwrap_or("unknown");
                 let req_id = json.get("requestId").and_then(|r| r.as_u64()).unwrap_or(0);
                 Err(Error::InvalidRequest { request_id: req_id as u32, reason: reason.to_string() })
+            }
+            Some("LAUNCH_ERROR") => {
+                let reason = json.get("reason").and_then(|r| r.as_str()).unwrap_or("unknown");
+                Err(Error::LaunchFailed { reason: reason.to_string() })
             }
             _ => Ok(()),
         }

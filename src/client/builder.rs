@@ -20,6 +20,7 @@ pub struct CastClientBuilder {
 }
 
 impl CastClientBuilder {
+    /// Create a new builder with default configuration for the given host and port.
     pub fn new(host: impl Into<String>, port: u16) -> Self {
         Self {
             host: host.into(),

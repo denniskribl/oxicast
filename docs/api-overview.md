@@ -73,7 +73,7 @@ CastApp::Custom("MY_APP_ID".into())
 All media methods require a running app — call `launch_app()` first.
 
 ```rust
-let status = client.load_media(&media, true, 0.0).await?;
+let status = client.load_media(&media, true, 0.0, None).await?;
 client.play().await?;
 client.pause().await?;
 client.seek(120.0).await?;
@@ -83,7 +83,7 @@ let status = client.media_status().await?;
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `load_media(media, autoplay, start_time)` | `Result<MediaStatus>` | Load media onto the device |
+| `load_media(media, autoplay, start_time, custom_data)` | `Result<MediaStatus>` | Load media onto the device |
 | `play()` | `Result<MediaStatus>` | Resume playback |
 | `pause()` | `Result<MediaStatus>` | Pause playback |
 | `seek(position)` | `Result<MediaStatus>` | Seek to position in seconds |
@@ -238,7 +238,7 @@ let (server, status) = client.serve_and_cast("/path/to/video.mp4", "video/mp4", 
 use oxicast::serve::FileServer;
 let server = FileServer::start("0.0.0.0:0").await?;
 let url = server.serve_file("/path/to/video.mp4", "video/mp4")?;
-client.load_media(&MediaInfo::new(&url, "video/mp4"), true, 0.0).await?;
+client.load_media(&MediaInfo::new(&url, "video/mp4"), true, 0.0, None).await?;
 ```
 
 The `FileServer` must be kept alive for the duration of playback. Dropping it stops the HTTP server.

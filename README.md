@@ -29,7 +29,7 @@ A fully async Rust client for the Google Cast protocol (Chromecast, Google TV, C
 ```rust
 let client = CastClient::connect("192.168.1.100", 8009).await?;
 client.launch_app(&CastApp::DefaultMediaReceiver).await?;
-client.load_media(&MediaInfo::new(url, "video/mp4"), true, 0.0).await?;
+client.load_media(&MediaInfo::new(url, "video/mp4"), true, 0.0, None).await?;
 client.pause().await?;
 client.seek(60.0).await?;
 client.play().await?;
@@ -45,7 +45,7 @@ client.play().await?;
 
 ```toml
 [dependencies]
-oxicast = "0.0.1"
+oxicast = "0.0.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -71,6 +71,7 @@ async fn main() -> oxicast::Result<()> {
     client.load_media(
         &MediaInfo::new("https://example.com/video.mp4", "video/mp4"),
         true, 0.0,
+        None,
     ).await?;
 
     // React to events
@@ -124,7 +125,7 @@ let client = CastClient::connect("192.168.1.100", 8009).await?;
 
 ```toml
 # Disable discovery, enable local file serving
-oxicast = { version = "0.0.1", default-features = false, features = ["serve"] }
+oxicast = { version = "0.0.2", default-features = false, features = ["serve"] }
 ```
 
 ---

@@ -12,7 +12,7 @@ This guide walks you through connecting to a Cast device, playing media, and rea
 
 ```toml
 [dependencies]
-oxicast = "0.0.1"
+oxicast = "0.0.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -91,6 +91,7 @@ let status = client.load_media(
     &MediaInfo::new("https://example.com/video.mp4", "video/mp4"),
     true,  // autoplay
     0.0,   // start position in seconds
+    None,  // optional custom_data for Custom Web Receiver
 ).await?;
 
 println!("State: {:?}", status.player_state);
@@ -212,7 +213,7 @@ Watch channels work regardless of whether anyone calls `next_event()`.
 With the `serve` feature, you can cast files from your local filesystem:
 
 ```toml
-oxicast = { version = "0.0.1", features = ["serve"] }
+oxicast = { version = "0.0.2", features = ["serve"] }
 ```
 
 ### One-call convenience
@@ -236,7 +237,7 @@ let server = FileServer::start("0.0.0.0:0").await?;
 let url = server.serve_file("/path/to/video.mp4", "video/mp4")?;
 println!("Serving at: {url}");
 
-client.load_media(&MediaInfo::new(&url, "video/mp4"), true, 0.0).await?;
+client.load_media(&MediaInfo::new(&url, "video/mp4"), true, 0.0, None).await?;
 ```
 
 ---

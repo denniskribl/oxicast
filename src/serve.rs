@@ -20,6 +20,7 @@
 //!     &oxicast::MediaInfo::new(&url, "video/mp4"),
 //!     true,
 //!     0.0,
+//!     None,
 //! ).await?;
 //!
 //! // Server stays alive until dropped

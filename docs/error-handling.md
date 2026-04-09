@@ -36,7 +36,7 @@ All public methods return `oxicast::Result<T>`, which is `Result<T, oxicast::Err
 When the Cast device rejects a command, oxicast surfaces the device's error type directly. Every public method calls `check_device_error()` on the response before parsing:
 
 ```rust
-match client.load_media(&media, true, 0.0).await {
+match client.load_media(&media, true, 0.0, None).await {
     Ok(status) => {
         println!("Playing: {:?}", status.player_state);
     }

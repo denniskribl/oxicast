@@ -20,7 +20,7 @@ async fn main() -> oxicast::Result<()> {
     // Launch and load
     client.launch_app(&CastApp::DefaultMediaReceiver).await?;
     let media = MediaInfo::new(&url, "video/mp4").stream_type(StreamType::Buffered);
-    client.load_media(&media, true, 0.0).await?;
+    client.load_media(&media, true, 0.0, None).await?;
     println!("Playing...");
 
     // Wait for playback to start
