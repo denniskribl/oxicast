@@ -467,14 +467,15 @@ impl CastClient {
                     .ok()
                     .flatten()
             {
-                if let CastEvent::ReceiverStatusChanged(ref rs) = event
-                    && let Some(app_info) = rs.applications.iter().find(|a| a.app_id == target_id)
-                {
-                    let app_info = app_info.clone();
-                    self.send(channel::connection::connect_msg(&app_info.transport_id)).await?;
-                    *self.inner.transport_id.lock().await = Some(app_info.transport_id.clone());
-                    *self.inner.session_id.lock().await = Some(app_info.session_id.clone());
-                    return Ok(app_info);
+                #[allow(clippy::collapsible_match)]
+                if let CastEvent::ReceiverStatusChanged(ref rs) = event {
+                    if let Some(app_info) = rs.applications.iter().find(|a| a.app_id == target_id) {
+                        let app_info = app_info.clone();
+                        self.send(channel::connection::connect_msg(&app_info.transport_id)).await?;
+                        *self.inner.transport_id.lock().await = Some(app_info.transport_id.clone());
+                        *self.inner.session_id.lock().await = Some(app_info.session_id.clone());
+                        return Ok(app_info);
+                    }
                 }
             }
         }
