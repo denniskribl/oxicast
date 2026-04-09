@@ -448,7 +448,8 @@ impl CastClient {
 
         let status = router::parse_receiver_status_from_json(&json);
         if let Some(status) = status {
-            if let Some(app_info) = status.applications.into_iter().find(|a| a.app_id == target_id) {
+            if let Some(app_info) = status.applications.into_iter().find(|a| a.app_id == target_id)
+            {
                 self.send(channel::connection::connect_msg(&app_info.transport_id)).await?;
                 *self.inner.transport_id.lock().await = Some(app_info.transport_id.clone());
                 *self.inner.session_id.lock().await = Some(app_info.session_id.clone());
@@ -460,10 +461,12 @@ impl CastClient {
         tracing::debug!("launch_app: app not in first response, waiting for status update...");
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
         while tokio::time::Instant::now() < deadline {
-            if let Some(event) = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                self.next_event(),
-            ).await.ok().flatten() {
+            if let Some(event) =
+                tokio::time::timeout(std::time::Duration::from_secs(3), self.next_event())
+                    .await
+                    .ok()
+                    .flatten()
+            {
                 if let CastEvent::ReceiverStatusChanged(ref rs) = event
                     && let Some(app_info) = rs.applications.iter().find(|a| a.app_id == target_id)
                 {
