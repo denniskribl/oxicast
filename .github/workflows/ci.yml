@@ -18,8 +18,6 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - run: cargo check --all-features
       - run: cargo check --no-default-features
 
@@ -30,8 +28,6 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - run: cargo test --all-features
 
   clippy:
@@ -43,8 +39,6 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - run: cargo clippy --all-targets --all-features -- -D warnings
 
   fmt:
@@ -71,8 +65,6 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: -Dwarnings
@@ -84,8 +76,6 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - run: cargo check --examples --all-features
 
   msrv:
@@ -95,8 +85,6 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@c93f4f9c67595668add93d3d6895795ce52d8c2d # 1.85.0
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - run: cargo check --all-features
 
   publish-dry-run:
@@ -106,8 +94,6 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - run: cargo publish --dry-run
 
   coverage:
@@ -119,8 +105,6 @@ jobs:
         with:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@80e6af7a2ec7f280fffe2d0a9d3a12a9d11d86e9 # v2
         with:
@@ -143,13 +127,4 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install protoc (Ubuntu)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y protobuf-compiler
-      - name: Install protoc (macOS)
-        if: runner.os == 'macOS'
-        run: brew install protobuf
-      - name: Install protoc (Windows)
-        if: runner.os == 'Windows'
-        run: choco install protoc
       - run: cargo check --all-features

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-04-09
+
+### Changed
+- `proto/` source definitions are no longer shipped in the published crate.
+- Cast protobuf bindings are now consumed from checked-in `src/proto_gen.rs` at build time.
+- CI/release setup no longer requires `protoc` for normal build/test/publish flows.
+
 ## [0.0.2] - 2026-04-09
 
 ### Changed

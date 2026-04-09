@@ -45,7 +45,7 @@ client.play().await?;
 
 ```toml
 [dependencies]
-oxicast = "0.0.2"
+oxicast = "0.0.3"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -125,7 +125,7 @@ let client = CastClient::connect("192.168.1.100", 8009).await?;
 
 ```toml
 # Disable discovery, enable local file serving
-oxicast = { version = "0.0.2", default-features = false, features = ["serve"] }
+oxicast = { version = "0.0.3", default-features = false, features = ["serve"] }
 ```
 
 ---

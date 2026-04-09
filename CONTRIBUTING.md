@@ -7,10 +7,9 @@ Thanks for your interest in contributing!
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/your-username/oxicast`
 3. Create a branch: `git checkout -b my-feature`
-4. Install protobuf compiler: `brew install protobuf` (macOS) or `apt install protobuf-compiler` (Linux)
-5. Make your changes
-6. Run all quality gates (see below)
-7. Submit a PR
+4. Make your changes
+5. Run all quality gates (see below)
+6. Submit a PR
 
 ## Quality Gates
 

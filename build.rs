@@ -1,4 +1,5 @@
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    prost_build::compile_protos(&["proto/cast_channel.proto"], &["proto/"])?;
-    Ok(())
+fn main() {
+    // Proto bindings are pre-generated in src/proto_gen.rs.
+    // To regenerate: cargo build with prost-build, then copy
+    // target/debug/build/oxicast-*/out/openscreen.cast.proto.rs → src/proto_gen.rs
 }

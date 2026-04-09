@@ -1,6 +1,6 @@
 [package]
 name = "oxicast"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -11,7 +11,7 @@ homepage = "https://github.com/denniskribl/oxicast"
 categories = ["multimedia", "network-programming", "asynchronous"]
 documentation = "https://docs.rs/oxicast"
 readme = "README.md"
-exclude = ["website/", "docs/", ".github/", "deny.toml"]
+exclude = ["website/", "docs/", ".github/", "deny.toml", "proto/"]
 
 [dependencies]
 # Async runtime
@@ -54,7 +54,8 @@ tokio = { version = "1", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
-prost-build = "0.14"
+# prost-build only needed to regenerate proto_gen.rs (see build.rs)
+# prost-build = "0.14"
 
 [features]
 default = ["discovery"]

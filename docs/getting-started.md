@@ -12,7 +12,7 @@ This guide walks you through connecting to a Cast device, playing media, and rea
 
 ```toml
 [dependencies]
-oxicast = "0.0.2"
+oxicast = "0.0.3"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -213,7 +213,7 @@ Watch channels work regardless of whether anyone calls `next_event()`.
 With the `serve` feature, you can cast files from your local filesystem:
 
 ```toml
-oxicast = { version = "0.0.2", features = ["serve"] }
+oxicast = { version = "0.0.3", features = ["serve"] }
 ```
 
 ### One-call convenience

@@ -7,10 +7,6 @@ oxicast is an async Google Cast (Chromecast) client library for Rust, built on t
 ## Build
 
 ```sh
-# Requires protoc (protobuf compiler)
-brew install protobuf        # macOS
-sudo apt install protobuf-compiler  # Linux
-
 cargo check
 cargo test --all-features
 ```

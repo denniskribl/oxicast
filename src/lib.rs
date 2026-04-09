@@ -77,7 +77,7 @@ pub mod __test_util {
 
 mod proto {
     #![allow(dead_code)]
-    include!(concat!(env!("OUT_DIR"), "/openscreen.cast.proto.rs"));
+    include!("proto_gen.rs");
 }
 
 #[cfg(feature = "discovery")]
