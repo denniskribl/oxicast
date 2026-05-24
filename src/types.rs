@@ -2,6 +2,15 @@
 
 use serde::{Deserialize, Serialize};
 
+/// A device capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Capability {
+    /// The device supports video playback.
+    VideoOutput,
+    /// The device supports audio playback.
+    AudioOutput,
+}
+
 /// Information about a discovered Cast device on the local network.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceInfo {
@@ -15,6 +24,8 @@ pub struct DeviceInfo {
     pub model: Option<String>,
     /// Device UUID.
     pub uuid: Option<String>,
+    /// Device capabilities.
+    pub capabilities: Vec<Capability>,
 }
 
 impl DeviceInfo {
