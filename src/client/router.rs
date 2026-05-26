@@ -290,6 +290,7 @@ fn parse_media_status(json: &serde_json::Value) -> Option<MediaStatus> {
         media: entry.get("media").and_then(|m| {
             Some(MediaInfo {
                 content_id: m.get("contentId")?.as_str()?.to_string(),
+                content_url: m.get("contentUrl").and_then(|c| c.as_str()).map(|c| c.to_string()),
                 content_type: m
                     .get("contentType")
                     .and_then(|c| c.as_str())
