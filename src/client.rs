@@ -448,6 +448,15 @@ impl CastClient {
             .ok_or_else(|| Error::Internal("failed to parse receiver status".into()))
     }
 
+    /// Connects to an already running application
+    pub async fn join_session(&self, application: &Application) -> Result<()> {
+        self.send(channel::connection::connect_msg(&application.transport_id)).await?;
+        *self.inner.transport_id.lock().await = Some(application.transport_id.clone());
+        *self.inner.session_id.lock().await = Some(application.session_id.clone());
+
+        Ok(())
+    }
+
     /// Launch an application on the device.
     pub async fn launch_app(&self, app: &CastApp) -> Result<Application> {
         let (id, rx) = self.inner.request_tracker.register().await;

@@ -5,8 +5,11 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use crate::error::{Error, Result};
 use crate::types::DeviceInfo;
+use crate::{
+    error::{Error, Result},
+    types::Capability,
+};
 
 const SERVICE_TYPE: &str = "_googlecast._tcp.local.";
 
@@ -26,6 +29,27 @@ impl DiscoveryStream {
 }
 
 use tokio::sync::mpsc;
+
+const CAPABILITY_VIDEO_OUTPUT: u32 = 1 << 0;
+const CAPABILITY_AUDIO_OUTPUT: u32 = 1 << 2;
+
+fn capabilities_from_ca(ca: Option<String>) -> Vec<Capability> {
+    let mut capabilities = Vec::new();
+
+    let bitmask = ca
+        .and_then(|ca| ca.parse::<u32>().ok())
+        .unwrap_or(CAPABILITY_VIDEO_OUTPUT + CAPABILITY_AUDIO_OUTPUT);
+
+    if (bitmask & CAPABILITY_VIDEO_OUTPUT) > 0 {
+        capabilities.push(Capability::VideoOutput)
+    }
+
+    if (bitmask & CAPABILITY_AUDIO_OUTPUT) > 0 {
+        capabilities.push(Capability::AudioOutput)
+    }
+
+    capabilities
+}
 
 /// Discover Cast devices as a stream, yielding each device as it's found.
 ///
@@ -92,10 +116,18 @@ fn discover_streaming(
                     info.get_property_val_str("fn").unwrap_or(info.get_fullname()).to_string();
                 let model = info.get_property_val_str("md").map(String::from);
                 let uuid = info.get_property_val_str("id").map(String::from);
+                let ca = info.get_property_val_str("ca").map(String::from);
 
                 tracing::debug!("discovered: {name} at {ip}:{}", info.get_port());
 
-                let device = DeviceInfo { name, ip, port: info.get_port(), model, uuid };
+                let device = DeviceInfo {
+                    name,
+                    ip,
+                    port: info.get_port(),
+                    model,
+                    uuid,
+                    capabilities: capabilities_from_ca(ca),
+                };
                 if tx.blocking_send(device).is_err() {
                     break; // receiver dropped
                 }
@@ -166,10 +198,18 @@ fn discover_blocking(timeout: Duration) -> Result<Vec<DeviceInfo>> {
 
                 let model = info.get_property_val_str("md").map(String::from);
                 let uuid = info.get_property_val_str("id").map(String::from);
+                let ca = info.get_property_val_str("ca").map(String::from);
 
                 tracing::debug!("discovered: {name} at {ip}:{}", info.get_port());
 
-                devices.push(DeviceInfo { name, ip, port: info.get_port(), model, uuid });
+                devices.push(DeviceInfo {
+                    name,
+                    ip,
+                    port: info.get_port(),
+                    model,
+                    uuid,
+                    capabilities: capabilities_from_ca(ca),
+                });
             }
             Ok(_) => {}
             Err(e) => {

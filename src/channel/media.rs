@@ -25,6 +25,9 @@ pub fn load(
         },
     });
 
+    if let Some(ref content_url) = media.content_url {
+        media_obj["contentUrl"] = serde_json::json!(content_url);
+    }
     if let Some(dur) = media.duration {
         media_obj["duration"] = serde_json::json!(dur);
     }

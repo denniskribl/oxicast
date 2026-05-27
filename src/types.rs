@@ -2,6 +2,15 @@
 
 use serde::{Deserialize, Serialize};
 
+/// A device capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Capability {
+    /// The device supports video playback.
+    VideoOutput,
+    /// The device supports audio playback.
+    AudioOutput,
+}
+
 /// Information about a discovered Cast device on the local network.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceInfo {
@@ -15,6 +24,8 @@ pub struct DeviceInfo {
     pub model: Option<String>,
     /// Device UUID.
     pub uuid: Option<String>,
+    /// Device capabilities.
+    pub capabilities: Vec<Capability>,
 }
 
 impl DeviceInfo {
@@ -81,6 +92,8 @@ pub enum IdleReason {
 pub struct MediaInfo {
     /// The URL or content identifier.
     pub content_id: String,
+    /// The actual URL of the media (replaces the content_id).
+    pub content_url: Option<String>,
     /// MIME type (e.g., "video/mp4", "application/x-mpegURL").
     pub content_type: String,
     /// Whether this is buffered (VOD) or live content.
@@ -97,6 +110,7 @@ impl MediaInfo {
     pub fn new(content_id: impl Into<String>, content_type: impl Into<String>) -> Self {
         Self {
             content_id: content_id.into(),
+            content_url: None,
             content_type: content_type.into(),
             stream_type: StreamType::Buffered,
             duration: None,
@@ -420,6 +434,7 @@ impl MediaInfo {
     ) -> Self {
         Self {
             content_id: content_id.into(),
+            content_url: None,
             content_type: content_type.into(),
             stream_type: StreamType::Buffered,
             duration: None,
@@ -437,6 +452,7 @@ impl MediaInfo {
     pub fn live(content_id: impl Into<String>, content_type: impl Into<String>) -> Self {
         Self {
             content_id: content_id.into(),
+            content_url: None,
             content_type: content_type.into(),
             stream_type: StreamType::Live,
             duration: None,
