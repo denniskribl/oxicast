@@ -105,11 +105,19 @@ pub fn spawn_heartbeat_task(cfg: HeartbeatConfig) -> tokio::task::JoinHandle<()>
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
-                    if write_tx.send(ping()).await.is_err() {
-                        tracing::debug!("heartbeat task stopping (write channel closed)");
-                        break;
+                    // Never wait on the write channel: if the writer is stuck (e.g. the
+                    // socket's send buffer is full because the device has gone away)
+                    // awaiting here would also stall the liveness check below.
+                    match write_tx.try_send(ping()) {
+                        Ok(()) => tracing::trace!("sent PING"),
+                        Err(mpsc::error::TrySendError::Full(_)) => {
+                            tracing::debug!("write channel full, skipping PING");
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                            tracing::debug!("heartbeat task stopping (write channel closed)");
+                            break;
+                        }
                     }
-                    tracing::trace!("sent PING");
 
                     // Check liveness using monotonic Instant
                     let elapsed = last_activity
@@ -269,6 +277,38 @@ mod tests {
         });
 
         // Should receive HeartbeatTimeout event
+        let event =
+            tokio::time::timeout(Duration::from_secs(2), event_rx.recv()).await.unwrap().unwrap();
+        assert_eq!(event, CastEvent::HeartbeatTimeout);
+        assert!(!alive.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_timeout_detection_with_stuck_writer() {
+        // A full write channel that nothing drains simulates a writer blocked on a dead socket.
+        let (write_tx, _write_rx) = mpsc::channel(1);
+        write_tx.try_send(ping()).unwrap();
+        let (event_tx, mut event_rx) = mpsc::channel(16);
+        let cancel = CancellationToken::new();
+        let la = new_last_activity();
+        let alive = Arc::new(AtomicBool::new(true));
+
+        {
+            let mut t = la.lock().unwrap();
+            *t = Instant::now() - Duration::from_secs(100);
+        }
+
+        let _handle = spawn_heartbeat_task(HeartbeatConfig {
+            write_tx,
+            interval: Duration::from_millis(50),
+            cancel: cancel.clone(),
+            last_activity: la,
+            timeout: Duration::from_millis(10),
+            alive: alive.clone(),
+            event_tx,
+            connection_tx: make_conn_tx(),
+        });
+
         let event =
             tokio::time::timeout(Duration::from_secs(2), event_rx.recv()).await.unwrap().unwrap();
         assert_eq!(event, CastEvent::HeartbeatTimeout);

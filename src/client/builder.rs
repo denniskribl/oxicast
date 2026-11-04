@@ -12,6 +12,7 @@ pub struct CastClientBuilder {
     pub(crate) heartbeat_interval: Duration,
     pub(crate) heartbeat_timeout: Duration,
     pub(crate) request_timeout: Duration,
+    pub(crate) connect_timeout: Duration,
     pub(crate) auto_reconnect: bool,
     pub(crate) max_reconnect_attempts: u32,
     pub(crate) reconnect_delay: Duration,
@@ -28,6 +29,7 @@ impl CastClientBuilder {
             heartbeat_interval: Duration::from_secs(5),
             heartbeat_timeout: Duration::from_secs(15),
             request_timeout: Duration::from_secs(10),
+            connect_timeout: Duration::from_secs(10),
             auto_reconnect: true,
             max_reconnect_attempts: 5,
             reconnect_delay: Duration::from_secs(2),
@@ -54,6 +56,14 @@ impl CastClientBuilder {
     /// Set the timeout for request-response operations.
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
+        self
+    }
+
+    /// Set the timeout for establishing a connection (TCP connect and TLS handshake).
+    ///
+    /// Applies to the initial connection and to every reconnection attempt.
+    pub fn connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = timeout;
         self
     }
 
