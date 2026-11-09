@@ -209,3 +209,30 @@ async fn stop_and_close_matches_disconnect() {
     assert!(stop < close);
     assert!(!sent.iter().any(|m| m.payload["type"] == "CLOSE" && m.destination == "app-1"));
 }
+
+#[tokio::test]
+async fn disconnect_reports_a_single_event_when_the_device_vanishes_meanwhile() {
+    let (port, _seen) = start_mock_receiver().await;
+    let client = oxicast::CastClient::builder("127.0.0.1", port)
+        .auto_reconnect(false)
+        .request_timeout(Duration::from_millis(500))
+        .connect()
+        .await
+        .expect("connect");
+    let status = client.receiver_status().await.expect("receiver status");
+    let app = status.applications.iter().find(|a| a.transport_id == "drop-app").expect("drop-app");
+    client.join_session(app).await.expect("join");
+
+    // The mock resets the connection when it receives STOP.
+    client.disconnect().await.expect("disconnect");
+
+    let mut disconnects = Vec::new();
+    while let Ok(Some(event)) =
+        tokio::time::timeout(Duration::from_millis(500), client.next_event()).await
+    {
+        if let oxicast::CastEvent::Disconnected(reason) = event {
+            disconnects.push(reason);
+        }
+    }
+    assert_eq!(disconnects, vec![None], "only the terminal Disconnected(None) of disconnect()");
+}

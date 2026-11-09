@@ -204,11 +204,14 @@ impl CastClient {
         handles.writer = Some(tokio::spawn(writer_loop(
             write_half,
             write_rx,
-            cancel.clone(),
-            alive.clone(),
-            state_holder.clone(),
-            event_tx.clone(),
-            loss_reported.clone(),
+            WriterContext {
+                cancel: cancel.clone(),
+                alive: alive.clone(),
+                state: state_holder.clone(),
+                event_tx: event_tx.clone(),
+                loss_reported: loss_reported.clone(),
+                shutting_down: shutting_down.clone(),
+            },
         )));
         handles.reader = Some(tokio::spawn(reader_loop(
             read_half,
@@ -221,6 +224,7 @@ impl CastClient {
                 alive: alive.clone(),
                 last_activity: last_activity.clone(),
                 loss_reported,
+                shutting_down: shutting_down.clone(),
             },
         )));
         handles.heartbeat = Some(heartbeat::spawn_heartbeat_task(heartbeat::HeartbeatConfig {
@@ -445,11 +449,14 @@ impl CastClient {
         handles.writer = Some(tokio::spawn(writer_loop(
             write_half,
             new_write_rx,
-            cancel.clone(),
-            self.inner.alive.clone(),
-            self.inner.state.clone(),
-            event_tx.clone(),
-            loss_reported.clone(),
+            WriterContext {
+                cancel: cancel.clone(),
+                alive: self.inner.alive.clone(),
+                state: self.inner.state.clone(),
+                event_tx: event_tx.clone(),
+                loss_reported: loss_reported.clone(),
+                shutting_down: self.inner.shutting_down.clone(),
+            },
         )));
         heartbeat::touch(&self.inner.last_activity);
         handles.reader = Some(tokio::spawn(reader_loop(
@@ -463,6 +470,7 @@ impl CastClient {
                 alive: self.inner.alive.clone(),
                 last_activity: self.inner.last_activity.clone(),
                 loss_reported,
+                shutting_down: self.inner.shutting_down.clone(),
             },
         )));
         handles.heartbeat = Some(heartbeat::spawn_heartbeat_task(heartbeat::HeartbeatConfig {
@@ -979,15 +987,24 @@ impl PayloadSummary {
     }
 }
 
-async fn writer_loop(
-    mut writer: WriteHalf<TlsStream<TcpStream>>,
-    mut rx: mpsc::Receiver<crate::proto::CastMessage>,
+/// Context passed to the writer task.
+struct WriterContext {
     cancel: CancellationToken,
     alive: Arc<AtomicBool>,
     state: Arc<state::StateHolder>,
     event_tx: mpsc::Sender<CastEvent>,
+    /// Shared with the reader so a connection loss is reported only once.
     loss_reported: Arc<AtomicBool>,
+    /// Set by `disconnect()`/`close()`, which emit their own terminal event.
+    shutting_down: Arc<AtomicBool>,
+}
+
+async fn writer_loop(
+    mut writer: WriteHalf<TlsStream<TcpStream>>,
+    mut rx: mpsc::Receiver<crate::proto::CastMessage>,
+    ctx: WriterContext,
 ) {
+    let WriterContext { cancel, alive, state, event_tx, loss_reported, shutting_down } = ctx;
     loop {
         tokio::select! {
             msg = rx.recv() => {
@@ -1005,8 +1022,11 @@ async fn writer_loop(
                         if let Err(e) = framing::write_message(&mut writer, &msg).await {
                             tracing::error!("write error: {e}");
                             alive.store(false, Ordering::Release);
-                            // Reader and writer share this flag so one loss is reported once.
-                            if !loss_reported.swap(true, Ordering::AcqRel) {
+                            // Reader and writer share this flag so one loss is reported once;
+                            // a user-initiated shutdown reports its own terminal event.
+                            if !shutting_down.load(Ordering::Acquire)
+                                && !loss_reported.swap(true, Ordering::AcqRel)
+                            {
                                 let _ = event_tx.try_send(CastEvent::Disconnected(Some(e.to_string())));
                             }
                             let _ = state.connection_tx.send(ConnectionState::Disconnected);
@@ -1045,6 +1065,8 @@ struct ReaderContext {
     last_activity: heartbeat::LastActivity,
     /// Shared with the writer so a connection loss is reported only once.
     loss_reported: Arc<AtomicBool>,
+    /// Set by `disconnect()`/`close()`, which emit their own terminal event.
+    shutting_down: Arc<AtomicBool>,
 }
 
 /// Reader task — owns the read half, routes all inbound messages.
@@ -1070,7 +1092,9 @@ async fn reader_loop(mut reader: ReadHalf<TlsStream<TcpStream>>, ctx: ReaderCont
                     Err(Error::Disconnected) => {
                         tracing::info!("connection closed by device");
                         ctx.alive.store(false, Ordering::Release);
-                        if !ctx.loss_reported.swap(true, Ordering::AcqRel) {
+                        if !ctx.shutting_down.load(Ordering::Acquire)
+                            && !ctx.loss_reported.swap(true, Ordering::AcqRel)
+                        {
                             let _ = ctx.event_tx.try_send(CastEvent::Disconnected(None));
                         }
                         break;
@@ -1078,7 +1102,9 @@ async fn reader_loop(mut reader: ReadHalf<TlsStream<TcpStream>>, ctx: ReaderCont
                     Err(e) => {
                         tracing::error!("read error: {e}");
                         ctx.alive.store(false, Ordering::Release);
-                        if !ctx.loss_reported.swap(true, Ordering::AcqRel) {
+                        if !ctx.shutting_down.load(Ordering::Acquire)
+                            && !ctx.loss_reported.swap(true, Ordering::AcqRel)
+                        {
                             let _ = ctx.event_tx.try_send(CastEvent::Disconnected(Some(e.to_string())));
                         }
                         break;

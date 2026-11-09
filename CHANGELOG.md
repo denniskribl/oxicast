@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Connecting to IPv6 literals (`fe80::1`, `[fe80::1]`, numeric scope `fe80::1%3`) works; previously the address was formatted as `host:port`, which is invalid for unbracketed IPv6.
-- A connection lost on the write side now emits `CastEvent::Disconnected` (it was silent, so apps with auto-reconnect disabled only noticed by polling `is_connected()`). A loss is reported once even if both reader and writer see it.
+- A connection lost on the write side now emits `CastEvent::Disconnected` (it was silent, so apps with auto-reconnect disabled only noticed by polling `is_connected()`). A loss is reported once even if both reader and writer see it, and not at all during `disconnect()`/`close()`, which emit their own terminal `Disconnected(None)`.
 - `disconnect()` could drop its final STOP/CLOSE messages because the writer task was aborted before flushing its queue; shutdown now flushes queued messages (bounded to 500 ms) and closes TLS cleanly.
 - MEDIA_STATUS entries that only carry `contentUrl` (e.g. media started by other senders) are now parsed instead of yielding `media: None`.
 - Connecting and heartbeat detection can no longer hang indefinitely ([#22](https://github.com/denniskribl/oxicast/pull/22)). Thanks @Mossop!
@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Raised the minimum `rustls` to 0.23.46 (RUSTSEC-2026-0285, RUSTSEC-2026-0346, RUSTSEC-2026-0348 and related `rustls-webpki` advisories).
 
 ### Changed
-- TLS connections use the ring crypto provider explicitly instead of the process-wide default, so they don't depend on the provider the application installed.
+- TLS connections are built with the ring crypto provider explicitly instead of the process-wide default. Note: `CastClient` still installs ring as the process-wide default if none is set (unchanged); removing that side effect is planned for 1.0.
 - **Breaking:** `MediaInfo` and `DeviceInfo` have new public fields; code constructing them with struct literals needs to set `content_url` / `capabilities`.
 - Dependency updates: `mdns-sd` 0.20, `tokio` 1.54, `axum` 0.8.9, `serde_json` 1.0.150; CI actions bumped (`actions/checkout` v6, `actions/deploy-pages` v5, `cargo-deny-action` 2.0.17).
 

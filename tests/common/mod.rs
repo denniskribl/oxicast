@@ -119,6 +119,11 @@ pub async fn start_mock_receiver_on(
             if msg.namespace == NS_TEST && msg.payload["type"] == "DROP_CONNECTION" {
                 return; // drops `tls` -> RST
             }
+            // `drop-app` behaves like a device that vanishes when told to stop.
+            if msg.destination == "drop-app" && msg.payload["type"] == "STOP" {
+                let _ = seen_tx.send(msg.clone());
+                return;
+            }
             let reply = match (msg.namespace.as_str(), msg.payload["type"].as_str()) {
                 (NS_HEARTBEAT, Some("PING")) => {
                     Some((NS_HEARTBEAT, "receiver-0", json!({"type": "PONG"})))
@@ -132,7 +137,7 @@ pub async fn start_mock_receiver_on(
                         "requestId": request_id,
                         "status": {
                             "volume": {"level": 0.5, "muted": false},
-                            "applications": [app("app-1", "session-1"), app("app-2", "session-2"), app("silent-app", "session-3")],
+                            "applications": [app("app-1", "session-1"), app("app-2", "session-2"), app("silent-app", "session-3"), app("drop-app", "session-4")],
                         }
                     }),
                 )),
@@ -140,6 +145,7 @@ pub async fn start_mock_receiver_on(
                     let (transport, session_id) = match msg.destination.as_str() {
                         "app-1" => ("app-1", 11),
                         "app-2" => ("app-2", 22),
+                        "drop-app" => ("drop-app", 44),
                         _ => continue,
                     };
                     let state = if msg.payload["type"] == "PAUSE" { "PAUSED" } else { "PLAYING" };
