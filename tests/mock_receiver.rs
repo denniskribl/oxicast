@@ -77,6 +77,13 @@ fn app(transport: &str, session: &str) -> Value {
 /// `app-2` with media session 22, `silent-app` never answers media requests). Returns its port and a stream of every
 /// non-heartbeat message the client sends.
 async fn start_mock_receiver() -> (u16, mpsc::UnboundedReceiver<Received>) {
+    start_mock_receiver_on("127.0.0.1:0").await.expect("bind")
+}
+
+/// Like [`start_mock_receiver`], bound to `bind_addr`; `None` if it can't bind.
+async fn start_mock_receiver_on(
+    bind_addr: &str,
+) -> Option<(u16, mpsc::UnboundedReceiver<Received>)> {
     let certs = vec![
         CertificateDer::from_pem_slice(include_bytes!("fixtures/mock_device.crt")).expect("cert"),
     ];
@@ -88,7 +95,7 @@ async fn start_mock_receiver() -> (u16, mpsc::UnboundedReceiver<Received>) {
         .expect("server config");
     let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
 
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let listener = TcpListener::bind(bind_addr).await.ok()?;
     let port = listener.local_addr().expect("addr").port();
     let (seen_tx, seen_rx) = mpsc::unbounded_channel();
 
@@ -166,7 +173,7 @@ async fn start_mock_receiver() -> (u16, mpsc::UnboundedReceiver<Received>) {
         }
     });
 
-    (port, seen_rx)
+    Some((port, seen_rx))
 }
 
 /// Waits for the next client message matching `pred`, skipping others.
@@ -320,4 +327,21 @@ async fn join_session_succeeds_when_status_fetch_times_out() {
     let connect = expect_msg(&mut seen, |m| m.destination == "silent-app").await;
     assert_eq!(connect.payload["type"], "CONNECT");
     client.disconnect().await.expect("disconnect");
+}
+
+#[tokio::test]
+async fn connects_to_ipv6_literals_with_and_without_brackets() {
+    for host in ["::1", "[::1]"] {
+        let Some((port, _seen)) = start_mock_receiver_on("[::1]:0").await else {
+            eprintln!("IPv6 loopback unavailable, skipping");
+            return;
+        };
+        let client = oxicast::CastClient::builder(host, port)
+            .request_timeout(Duration::from_secs(5))
+            .connect()
+            .await
+            .unwrap_or_else(|e| panic!("connect to {host}: {e}"));
+        client.receiver_status().await.expect("receiver status over IPv6");
+        client.close().await.expect("close");
+    }
 }
