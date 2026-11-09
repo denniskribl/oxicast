@@ -326,6 +326,15 @@ impl CastClient {
         self.shutdown(true).await
     }
 
+    /// Stop media playback, then close the connection.
+    ///
+    /// Identical to [`disconnect`](Self::disconnect); the name makes explicit
+    /// that the receiver stops playing. Use [`close`](Self::close) to leave
+    /// playback running.
+    pub async fn stop_and_close(&self) -> Result<()> {
+        self.shutdown(true).await
+    }
+
     /// Close the connection without stopping playback.
     ///
     /// Sends CLOSE for the joined/launched application transport and the

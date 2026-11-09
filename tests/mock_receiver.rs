@@ -189,3 +189,23 @@ async fn connection_loss_is_reported_exactly_once() {
     assert_eq!(disconnects, 1, "a lost connection must be reported exactly once");
     assert!(!client.is_connected());
 }
+
+#[tokio::test]
+async fn stop_and_close_matches_disconnect() {
+    let (port, mut seen) = start_mock_receiver().await;
+    let client = connect(port).await;
+    let status = client.receiver_status().await.expect("receiver status");
+    let app1 = status.applications.iter().find(|a| a.transport_id == "app-1").expect("app-1");
+    client.join_session(app1).await.expect("join");
+
+    client.stop_and_close().await.expect("stop_and_close");
+
+    let sent = drain(&mut seen).await;
+    let stop = sent.iter().position(|m| m.payload["type"] == "STOP").expect("sends STOP");
+    let close = sent
+        .iter()
+        .position(|m| m.payload["type"] == "CLOSE" && m.destination == "receiver-0")
+        .expect("sends CLOSE to receiver-0");
+    assert!(stop < close);
+    assert!(!sent.iter().any(|m| m.payload["type"] == "CLOSE" && m.destination == "app-1"));
+}
