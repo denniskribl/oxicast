@@ -37,16 +37,30 @@ impl TaskHandles {
         Self { cancel, reader: None, writer: None, heartbeat: None }
     }
 
-    /// Abort all running tasks and wait for them to finish.
-    async fn shutdown(&mut self) {
+    /// Stop all running tasks and wait for them to finish.
+    ///
+    /// With `flush`, the writer gets [`WRITER_FLUSH_TIMEOUT`] to send messages
+    /// that were already queued (used by `disconnect()`/`close()`). Without it
+    /// (reconnect), the writer is aborted before cancellation so stale queued
+    /// commands are never sent on the old connection.
+    async fn shutdown(&mut self, flush: bool) {
+        let mut writer = self.writer.take();
+        if !flush {
+            if let Some(h) = writer.take() {
+                h.abort();
+                let _ = h.await;
+            }
+        }
         self.cancel.cancel();
         if let Some(h) = self.reader.take() {
             h.abort();
             let _ = h.await;
         }
-        if let Some(h) = self.writer.take() {
-            h.abort();
-            let _ = h.await;
+        if let Some(mut h) = writer {
+            if tokio::time::timeout(WRITER_FLUSH_TIMEOUT, &mut h).await.is_err() {
+                h.abort();
+                let _ = h.await;
+            }
         }
         if let Some(h) = self.heartbeat.take() {
             h.abort();
@@ -54,6 +68,9 @@ impl TaskHandles {
         }
     }
 }
+
+/// How long shutdown waits for the writer task to flush queued messages.
+const WRITER_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// A connected Google Cast device client.
 ///
@@ -105,6 +122,7 @@ pub(crate) struct ClientConfig {
     pub reconnect_delay: std::time::Duration,
     pub heartbeat_interval: std::time::Duration,
     pub heartbeat_timeout: std::time::Duration,
+    pub connect_timeout: std::time::Duration,
     pub verify_tls: bool,
 }
 
@@ -160,7 +178,13 @@ impl CastClient {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         // Establish TLS connection
-        let tls_stream = connection::connect(&config.host, config.port, config.verify_tls).await?;
+        let tls_stream = connection::connect(
+            &config.host,
+            config.port,
+            config.verify_tls,
+            config.connect_timeout,
+        )
+        .await?;
         let (read_half, write_half) = io::split(tls_stream);
 
         // Create channels and shared state
@@ -176,12 +200,18 @@ impl CastClient {
 
         // Spawn background tasks with cancellation support
         let mut handles = TaskHandles::new(cancel.clone());
+        let loss_reported = Arc::new(AtomicBool::new(false));
         handles.writer = Some(tokio::spawn(writer_loop(
             write_half,
             write_rx,
-            cancel.clone(),
-            alive.clone(),
-            state_holder.clone(),
+            WriterContext {
+                cancel: cancel.clone(),
+                alive: alive.clone(),
+                state: state_holder.clone(),
+                event_tx: event_tx.clone(),
+                loss_reported: loss_reported.clone(),
+                shutting_down: shutting_down.clone(),
+            },
         )));
         handles.reader = Some(tokio::spawn(reader_loop(
             read_half,
@@ -193,6 +223,8 @@ impl CastClient {
                 cancel: cancel.clone(),
                 alive: alive.clone(),
                 last_activity: last_activity.clone(),
+                loss_reported,
+                shutting_down: shutting_down.clone(),
             },
         )));
         handles.heartbeat = Some(heartbeat::spawn_heartbeat_task(heartbeat::HeartbeatConfig {
@@ -223,6 +255,7 @@ impl CastClient {
             reconnect_delay: config.reconnect_delay,
             heartbeat_interval: config.heartbeat_interval,
             heartbeat_timeout: config.heartbeat_timeout,
+            connect_timeout: config.connect_timeout,
             verify_tls: config.verify_tls,
         };
 
@@ -290,18 +323,48 @@ impl CastClient {
     /// Stops media playback, closes the connection, and shuts down all
     /// background tasks. The device stops immediately — it won't continue
     /// playing buffered content. Auto-reconnect is disabled.
+    ///
+    /// To leave the receiver playing (e.g. after [`join_session`](Self::join_session)
+    /// on media started by another sender), use [`close`](Self::close) instead.
     pub async fn disconnect(&self) -> Result<()> {
+        self.shutdown(true).await
+    }
+
+    /// Stop media playback, then close the connection.
+    ///
+    /// Identical to [`disconnect`](Self::disconnect); the name makes explicit
+    /// that the receiver stops playing. Use [`close`](Self::close) to leave
+    /// playback running.
+    pub async fn stop_and_close(&self) -> Result<()> {
+        self.shutdown(true).await
+    }
+
+    /// Close the connection without stopping playback.
+    ///
+    /// Sends CLOSE for the joined/launched application transport and the
+    /// receiver, then shuts down all background tasks like
+    /// [`disconnect`](Self::disconnect), but never sends a media STOP, so
+    /// whatever is playing keeps playing. Auto-reconnect is disabled.
+    pub async fn close(&self) -> Result<()> {
+        self.shutdown(false).await
+    }
+
+    async fn shutdown(&self, stop_media: bool) -> Result<()> {
         self.inner.shutting_down.store(true, Ordering::Release);
-        // Stop media first so the device stops playback immediately
-        // instead of draining its buffer for several more seconds.
         let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            self.stop_media().await.ok();
+            if stop_media {
+                // Stop media first so the device stops playback immediately
+                // instead of draining its buffer for several more seconds.
+                self.stop_media().await.ok();
+            } else if let Some(tid) = self.inner.transport_id.lock().await.clone() {
+                self.send(channel::connection::close_msg(&tid)).await.ok();
+            }
             self.send(channel::connection::close_msg("receiver-0")).await.ok();
         })
         .await;
         self.inner.alive.store(false, Ordering::Release);
         // Deterministically stop all background tasks
-        self.inner.task_handles.lock().await.shutdown().await;
+        self.inner.task_handles.lock().await.shutdown(true).await;
         self.inner.request_tracker.clear().await;
         let _ = self.inner.state.connection_tx.send(ConnectionState::Disconnected);
         // Emit terminal Disconnected event, then drop the sender so
@@ -348,11 +411,17 @@ impl CastClient {
         // 1. Deterministically shut down all old tasks
         {
             let mut handles = self.inner.task_handles.lock().await;
-            handles.shutdown().await;
+            handles.shutdown(false).await;
         }
 
         // 2. Establish new TLS connection
-        let tls_stream = connection::connect(&config.host, config.port, config.verify_tls).await?;
+        let tls_stream = connection::connect(
+            &config.host,
+            config.port,
+            config.verify_tls,
+            config.connect_timeout,
+        )
+        .await?;
         let (read_half, write_half) = io::split(tls_stream);
 
         // Re-check shutting_down after the TLS handshake. If disconnect() was
@@ -376,12 +445,18 @@ impl CastClient {
 
         // 4. Spawn fresh tasks with new cancellation token
         let mut handles = TaskHandles::new(cancel.clone());
+        let loss_reported = Arc::new(AtomicBool::new(false));
         handles.writer = Some(tokio::spawn(writer_loop(
             write_half,
             new_write_rx,
-            cancel.clone(),
-            self.inner.alive.clone(),
-            self.inner.state.clone(),
+            WriterContext {
+                cancel: cancel.clone(),
+                alive: self.inner.alive.clone(),
+                state: self.inner.state.clone(),
+                event_tx: event_tx.clone(),
+                loss_reported: loss_reported.clone(),
+                shutting_down: self.inner.shutting_down.clone(),
+            },
         )));
         heartbeat::touch(&self.inner.last_activity);
         handles.reader = Some(tokio::spawn(reader_loop(
@@ -394,6 +469,8 @@ impl CastClient {
                 cancel: cancel.clone(),
                 alive: self.inner.alive.clone(),
                 last_activity: self.inner.last_activity.clone(),
+                loss_reported,
+                shutting_down: self.inner.shutting_down.clone(),
             },
         )));
         handles.heartbeat = Some(heartbeat::spawn_heartbeat_task(heartbeat::HeartbeatConfig {
@@ -434,12 +511,58 @@ impl CastClient {
             .ok_or_else(|| Error::Internal("failed to parse receiver status".into()))
     }
 
+    /// Connects to an already running application, e.g. one started by another
+    /// sender, so its media can be controlled from this client.
+    ///
+    /// Use [`receiver_status`](Self::receiver_status) to find the running
+    /// [`Application`]. If the app supports the media namespace, the current
+    /// media status is fetched so that playback controls work immediately;
+    /// it is returned (or `None` if the app is not playing anything, does not
+    /// support media, or the status request failed — the join still succeeded
+    /// and controls start working on the next status broadcast).
+    pub async fn join_session(&self, application: &Application) -> Result<Option<MediaStatus>> {
+        // Close the previously joined app's transport, if any.
+        let previous = self.inner.transport_id.lock().await.clone();
+        let rejoining_other_app = previous.as_deref() != Some(application.transport_id.as_str());
+        if let Some(prev) = previous.filter(|t| *t != application.transport_id) {
+            self.send(channel::connection::close_msg(&prev)).await?;
+        }
+
+        self.send(channel::connection::connect_msg(&application.transport_id)).await?;
+        *self.inner.transport_id.lock().await = Some(application.transport_id.clone());
+        *self.inner.session_id.lock().await = Some(application.session_id.clone());
+        if rejoining_other_app {
+            // A media session id from a previously controlled app is meaningless here.
+            self.inner.state.media_session_id.store(0, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        if !application.namespaces.iter().any(|ns| ns == channel::ns::NS_MEDIA) {
+            return Ok(None);
+        }
+        // The router records the media session id from the MEDIA_STATUS reply.
+        // The join itself has succeeded at this point, so a failed status fetch
+        // is not an error: controls start working on the next status broadcast.
+        match self.media_status().await {
+            Ok(status) => Ok(status),
+            Err(e) => {
+                tracing::warn!(
+                    "joined {} but fetching media status failed: {e}",
+                    application.transport_id
+                );
+                Ok(None)
+            }
+        }
+    }
+
     /// Launch an application on the device.
     pub async fn launch_app(&self, app: &CastApp) -> Result<Application> {
         let (id, rx) = self.inner.request_tracker.register().await;
         self.send(channel::receiver::launch_app(id, app.app_id())).await?;
         let json = self.inner.request_tracker.wait_for(id, rx).await?;
-        tracing::debug!("launch_app response: {}", json);
+        tracing::debug!(
+            "launch_app response received ({} applications)",
+            json.pointer("/status/applications").and_then(|a| a.as_array()).map_or(0, |a| a.len())
+        );
         Self::check_device_error(&json)?;
 
         // Custom receivers may take longer to load. If the first response doesn't
@@ -842,27 +965,70 @@ impl CastClient {
 // ── Background Tasks ─────────────────────────────────────────
 
 /// Writer task — owns the write half, sends messages from the channel.
-async fn writer_loop(
-    mut writer: WriteHalf<TlsStream<TcpStream>>,
-    mut rx: mpsc::Receiver<crate::proto::CastMessage>,
+/// Loggable summary of a message payload. Payloads are never logged in full:
+/// media URLs, `customData` and receiver responses can carry credentials such
+/// as short-lived bearer tokens.
+struct PayloadSummary {
+    kind: String,
+    request_id: u64,
+    len: usize,
+}
+
+impl PayloadSummary {
+    fn of(payload: Option<&str>) -> Self {
+        let payload = payload.unwrap_or("");
+        let json = serde_json::from_str::<serde_json::Value>(payload).ok();
+        let field = |k: &str| json.as_ref().and_then(|j| j.get(k).cloned());
+        Self {
+            kind: field("type").and_then(|t| t.as_str().map(str::to_owned)).unwrap_or_default(),
+            request_id: field("requestId").and_then(|r| r.as_u64()).unwrap_or(0),
+            len: payload.len(),
+        }
+    }
+}
+
+/// Context passed to the writer task.
+struct WriterContext {
     cancel: CancellationToken,
     alive: Arc<AtomicBool>,
     state: Arc<state::StateHolder>,
+    event_tx: mpsc::Sender<CastEvent>,
+    /// Shared with the reader so a connection loss is reported only once.
+    loss_reported: Arc<AtomicBool>,
+    /// Set by `disconnect()`/`close()`, which emit their own terminal event.
+    shutting_down: Arc<AtomicBool>,
+}
+
+async fn writer_loop(
+    mut writer: WriteHalf<TlsStream<TcpStream>>,
+    mut rx: mpsc::Receiver<crate::proto::CastMessage>,
+    ctx: WriterContext,
 ) {
+    let WriterContext { cancel, alive, state, event_tx, loss_reported, shutting_down } = ctx;
     loop {
         tokio::select! {
             msg = rx.recv() => {
                 match msg {
                     Some(msg) => {
+                        let summary = PayloadSummary::of(msg.payload_utf8.as_deref());
                         tracing::trace!(
                             ns = %msg.namespace,
                             dst = %msg.destination_id,
-                            payload = ?msg.payload_utf8.as_deref().unwrap_or(""),
+                            r#type = summary.kind,
+                            request_id = summary.request_id,
+                            bytes = summary.len,
                             "→ send"
                         );
                         if let Err(e) = framing::write_message(&mut writer, &msg).await {
                             tracing::error!("write error: {e}");
                             alive.store(false, Ordering::Release);
+                            // Reader and writer share this flag so one loss is reported once;
+                            // a user-initiated shutdown reports its own terminal event.
+                            if !shutting_down.load(Ordering::Acquire)
+                                && !loss_reported.swap(true, Ordering::AcqRel)
+                            {
+                                let _ = event_tx.try_send(CastEvent::Disconnected(Some(e.to_string())));
+                            }
                             let _ = state.connection_tx.send(ConnectionState::Disconnected);
                             break;
                         }
@@ -872,6 +1038,15 @@ async fn writer_loop(
             }
             _ = cancel.cancelled() => {
                 tracing::debug!("writer task cancelled");
+                // Flush messages queued before cancellation (e.g. the STOP/CLOSE
+                // sent by disconnect()) and close TLS cleanly. The caller bounds
+                // how long this may take before aborting the task.
+                while let Ok(msg) = rx.try_recv() {
+                    if framing::write_message(&mut writer, &msg).await.is_err() {
+                        break;
+                    }
+                }
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut writer).await;
                 break;
             }
         }
@@ -888,6 +1063,10 @@ struct ReaderContext {
     cancel: CancellationToken,
     alive: Arc<AtomicBool>,
     last_activity: heartbeat::LastActivity,
+    /// Shared with the writer so a connection loss is reported only once.
+    loss_reported: Arc<AtomicBool>,
+    /// Set by `disconnect()`/`close()`, which emit their own terminal event.
+    shutting_down: Arc<AtomicBool>,
 }
 
 /// Reader task — owns the read half, routes all inbound messages.
@@ -898,11 +1077,14 @@ async fn reader_loop(mut reader: ReadHalf<TlsStream<TcpStream>>, ctx: ReaderCont
                 match result {
                     Ok(msg) => {
                         heartbeat::touch(&ctx.last_activity);
+                        let summary = PayloadSummary::of(msg.payload_utf8.as_deref());
                         tracing::trace!(
                             ns = %msg.namespace,
                             src = %msg.source_id,
                             dst = %msg.destination_id,
-                            payload = ?msg.payload_utf8.as_deref().unwrap_or(""),
+                            r#type = summary.kind,
+                            request_id = summary.request_id,
+                            bytes = summary.len,
                             "← recv"
                         );
                         router::route(&msg, &ctx.request_tracker, &ctx.event_tx, &ctx.state, &ctx.write_tx).await;
@@ -910,13 +1092,21 @@ async fn reader_loop(mut reader: ReadHalf<TlsStream<TcpStream>>, ctx: ReaderCont
                     Err(Error::Disconnected) => {
                         tracing::info!("connection closed by device");
                         ctx.alive.store(false, Ordering::Release);
-                        let _ = ctx.event_tx.try_send(CastEvent::Disconnected(None));
+                        if !ctx.shutting_down.load(Ordering::Acquire)
+                            && !ctx.loss_reported.swap(true, Ordering::AcqRel)
+                        {
+                            let _ = ctx.event_tx.try_send(CastEvent::Disconnected(None));
+                        }
                         break;
                     }
                     Err(e) => {
                         tracing::error!("read error: {e}");
                         ctx.alive.store(false, Ordering::Release);
-                        let _ = ctx.event_tx.try_send(CastEvent::Disconnected(Some(e.to_string())));
+                        if !ctx.shutting_down.load(Ordering::Acquire)
+                            && !ctx.loss_reported.swap(true, Ordering::AcqRel)
+                        {
+                            let _ = ctx.event_tx.try_send(CastEvent::Disconnected(Some(e.to_string())));
+                        }
                         break;
                     }
                 }

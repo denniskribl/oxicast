@@ -19,6 +19,7 @@ let client = CastClient::builder("192.168.1.100", 8009)
     .heartbeat_interval(Duration::from_secs(5))
     .heartbeat_timeout(Duration::from_secs(15))
     .request_timeout(Duration::from_secs(10))
+    .connect_timeout(Duration::from_secs(10))
     .auto_reconnect(true)
     .max_reconnect_attempts(5)
     .reconnect_delay(Duration::from_secs(2))
@@ -34,7 +35,9 @@ let client = CastClient::builder("192.168.1.100", 8009)
 | `builder(host, port)` | `CastClientBuilder` | Start building with custom config |
 | `is_connected()` | `bool` | Check if the connection is alive |
 | `connection_state()` | `ConnectionState` | `Connected`, `Disconnected`, or `Reconnecting { attempt }` |
-| `disconnect()` | `Result<()>` | Graceful shutdown, closes event channel |
+| `disconnect()` | `Result<()>` | Stops media, then graceful shutdown; closes event channel |
+| `stop_and_close()` | `Result<()>` | Same as `disconnect()`, explicit name |
+| `close()` | `Result<()>` | Graceful shutdown without stopping media (leave a joined session playing) |
 | `reconnect()` | `Result<()>` | Manual reconnect (serialized with auto-reconnect) |
 
 ---
@@ -53,6 +56,7 @@ let volume = client.set_muted(true).await?;
 |--------|---------|-------------|
 | `receiver_status()` | `Result<ReceiverStatus>` | Get current device status (volume, apps) |
 | `launch_app(app)` | `Result<Application>` | Launch an app, connects to its transport |
+| `join_session(&app)` | `Result<Option<MediaStatus>>` | Join an app that is already running (e.g. started by another sender) |
 | `stop_app(session_id)` | `Result<()>` | Stop a running app |
 | `set_volume(level)` | `Result<Volume>` | Set volume (0.0 to 1.0) |
 | `set_muted(muted)` | `Result<Volume>` | Mute or unmute |

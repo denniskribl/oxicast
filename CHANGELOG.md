@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-11-09
+
+### Added
+- `CastClient::join_session` to attach to an application that is already running on the device, e.g. to control media started from another sender or resume a previous session. It fetches and returns the current `MediaStatus` so playback controls work immediately ([#22](https://github.com/denniskribl/oxicast/pull/22), [#19](https://github.com/denniskribl/oxicast/issues/19)). Thanks @Mossop!
+- `DeviceInfo::capabilities` exposing the device's audio/video output capabilities from the mDNS `ca` record, plus the new `Capability` enum ([#20](https://github.com/denniskribl/oxicast/pull/20)). Thanks @Mossop!
+- `MediaInfo::content_url` to set the `contentUrl` property in LOAD and QUEUE_LOAD/QUEUE_INSERT requests ([#21](https://github.com/denniskribl/oxicast/pull/21)). Thanks @Mossop!
+- `CastClientBuilder::connect_timeout` (default 10s) for the TCP connect + TLS handshake.
+- `CastClient::stop_and_close()`: same as `disconnect()` under an explicit name.
+- `CastClient::close()`: transport-only shutdown that closes the app and receiver channels without sending a media STOP, so playback (e.g. of a joined session) keeps running. `disconnect()` is unchanged and still stops media.
+
+### Fixed
+- Connecting to IPv6 literals (`fe80::1`, `[fe80::1]`, numeric scope `fe80::1%3`) works; previously the address was formatted as `host:port`, which is invalid for unbracketed IPv6.
+- A connection lost on the write side now emits `CastEvent::Disconnected` (it was silent, so apps with auto-reconnect disabled only noticed by polling `is_connected()`). A loss is reported once even if both reader and writer see it, and not at all during `disconnect()`/`close()`, which emit their own terminal `Disconnected(None)`.
+- `disconnect()` could drop its final STOP/CLOSE messages because the writer task was aborted before flushing its queue; shutdown now flushes queued messages (bounded to 500 ms) and closes TLS cleanly.
+- MEDIA_STATUS entries that only carry `contentUrl` (e.g. media started by other senders) are now parsed instead of yielding `media: None`.
+- Connecting and heartbeat detection can no longer hang indefinitely ([#22](https://github.com/denniskribl/oxicast/pull/22)). Thanks @Mossop!
+- `tokio-rustls` no longer enables its default `aws-lc-rs` feature, so dependents don't pull in `aws-lc-sys` even though `ring` is the only backend used ([#25](https://github.com/denniskribl/oxicast/pull/25)). Thanks @vyrti!
+
+### Security
+- Message payloads are no longer logged (trace logs record namespace, endpoints, message type, requestId and size). Payloads can contain media URLs with short-lived tokens and `customData` credentials.
+- Raised the minimum `rustls` to 0.23.46 (RUSTSEC-2026-0285, RUSTSEC-2026-0346, RUSTSEC-2026-0348 and related `rustls-webpki` advisories).
+
+### Changed
+- TLS connections are built with the ring crypto provider explicitly instead of the process-wide default. Note: `CastClient` still installs ring as the process-wide default if none is set (unchanged); removing that side effect is planned for 1.0.
+- **Breaking:** `MediaInfo` and `DeviceInfo` have new public fields; code constructing them with struct literals needs to set `content_url` / `capabilities`.
+- Dependency updates: `mdns-sd` 0.20, `tokio` 1.54, `axum` 0.8.9, `serde_json` 1.0.150; CI actions bumped (`actions/checkout` v6, `actions/deploy-pages` v5, `cargo-deny-action` 2.0.17).
+
 ## [0.0.3] - 2026-04-09
 
 ### Changed

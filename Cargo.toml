@@ -1,6 +1,6 @@
 [package]
 name = "oxicast"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -11,15 +11,15 @@ homepage = "https://github.com/denniskribl/oxicast"
 categories = ["multimedia", "network-programming", "asynchronous"]
 documentation = "https://docs.rs/oxicast"
 readme = "README.md"
-exclude = ["website/", "docs/", ".github/", "deny.toml", "proto/"]
+exclude = ["website/", "docs/", ".github/", "deny.toml", "proto/", "tests/fixtures/", "tests/common/", "tests/mock_receiver.rs", "tests/log_redaction.rs"]
 
 [dependencies]
 # Async runtime
 tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros", "io-util", "fs"] }
 
 # TLS
-tokio-rustls = "0.26"
-rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "tls12", "ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "logging", "tls12"] }
 
 # Protobuf
 prost = "0.14"
@@ -41,7 +41,7 @@ bytes = "1"
 rustls-native-certs = "0.8"
 
 # mDNS discovery (optional)
-mdns-sd = { version = "0.19", optional = true }
+mdns-sd = { version = "0.20", optional = true }
 
 # Task lifecycle + IO utilities
 tokio-util = { version = "0.7", features = ["rt", "io"] }

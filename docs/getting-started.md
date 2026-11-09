@@ -12,7 +12,7 @@ This guide walks you through connecting to a Cast device, playing media, and rea
 
 ```toml
 [dependencies]
-oxicast = "0.0.3"
+oxicast = "0.0.4"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -39,6 +39,7 @@ let client = CastClient::builder("192.168.1.100", 8009)
     .heartbeat_interval(Duration::from_secs(5))
     .heartbeat_timeout(Duration::from_secs(15))
     .request_timeout(Duration::from_secs(10))
+    .connect_timeout(Duration::from_secs(10))
     .auto_reconnect(true)
     .max_reconnect_attempts(5)
     .reconnect_delay(Duration::from_secs(2))
@@ -213,7 +214,7 @@ Watch channels work regardless of whether anyone calls `next_event()`.
 With the `serve` feature, you can cast files from your local filesystem:
 
 ```toml
-oxicast = { version = "0.0.3", features = ["serve"] }
+oxicast = { version = "0.0.4", features = ["serve"] }
 ```
 
 ### One-call convenience
