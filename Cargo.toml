@@ -18,7 +18,7 @@ exclude = ["website/", "docs/", ".github/", "deny.toml", "proto/"]
 tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros", "io-util", "fs"] }
 
 # TLS
-tokio-rustls = "0.26"
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "tls12", "ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "tls12"] }
 
 # Protobuf
