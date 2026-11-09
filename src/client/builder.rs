@@ -62,6 +62,7 @@ impl CastClientBuilder {
     /// Set the timeout for establishing a connection (TCP connect and TLS handshake).
     ///
     /// Applies to the initial connection and to every reconnection attempt.
+    /// Defaults to 10 seconds; must be non-zero or every connection attempt fails.
     pub fn connect_timeout(mut self, timeout: Duration) -> Self {
         self.connect_timeout = timeout;
         self

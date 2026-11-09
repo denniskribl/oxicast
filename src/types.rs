@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// A device capability.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Capability {
     /// The device supports video playback.
     VideoOutput,
@@ -24,7 +25,9 @@ pub struct DeviceInfo {
     pub model: Option<String>,
     /// Device UUID.
     pub uuid: Option<String>,
-    /// Device capabilities.
+    /// Device capabilities, from the mDNS `ca` record.
+    ///
+    /// If the record is missing or unparseable, video and audio output are assumed.
     pub capabilities: Vec<Capability>,
 }
 

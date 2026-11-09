@@ -448,13 +448,32 @@ impl CastClient {
             .ok_or_else(|| Error::Internal("failed to parse receiver status".into()))
     }
 
-    /// Connects to an already running application
-    pub async fn join_session(&self, application: &Application) -> Result<()> {
+    /// Connects to an already running application, e.g. one started by another
+    /// sender, so its media can be controlled from this client.
+    ///
+    /// Use [`receiver_status`](Self::receiver_status) to find the running
+    /// [`Application`]. If the app supports the media namespace, the current
+    /// media status is fetched so that playback controls work immediately;
+    /// it is returned (or `None` if the app is not playing anything or does
+    /// not support media).
+    pub async fn join_session(&self, application: &Application) -> Result<Option<MediaStatus>> {
+        // Close the previously joined app's transport, if any.
+        let previous = self.inner.transport_id.lock().await.clone();
+        if let Some(prev) = previous.filter(|t| *t != application.transport_id) {
+            self.send(channel::connection::close_msg(&prev)).await?;
+        }
+
         self.send(channel::connection::connect_msg(&application.transport_id)).await?;
         *self.inner.transport_id.lock().await = Some(application.transport_id.clone());
         *self.inner.session_id.lock().await = Some(application.session_id.clone());
+        // A media session id from a previously controlled app is meaningless here.
+        self.inner.state.media_session_id.store(0, std::sync::atomic::Ordering::Relaxed);
 
-        Ok(())
+        if !application.namespaces.iter().any(|ns| ns == channel::ns::NS_MEDIA) {
+            return Ok(None);
+        }
+        // The router records the media session id from the MEDIA_STATUS reply.
+        self.media_status().await
     }
 
     /// Launch an application on the device.

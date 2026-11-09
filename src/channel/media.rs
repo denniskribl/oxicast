@@ -115,6 +115,9 @@ fn serialize_queue_item(item: &QueueItem) -> serde_json::Value {
             StreamType::None => "NONE",
         },
     });
+    if let Some(ref content_url) = item.media.content_url {
+        media_obj["contentUrl"] = serde_json::json!(content_url);
+    }
     if let Some(dur) = item.media.duration {
         media_obj["duration"] = serde_json::json!(dur);
     }
@@ -383,6 +386,17 @@ mod tests {
         assert_eq!(item["media"]["duration"], 300.0);
         assert_eq!(item["media"]["metadata"]["metadataType"], 1);
         assert_eq!(item["media"]["metadata"]["title"], "Movie 1");
+    }
+
+    #[test]
+    fn test_queue_load_includes_content_url() {
+        let mut media = MediaInfo::new("id-123", "video/mp4");
+        media.content_url = Some("http://example.com/v.mp4".into());
+        let items = vec![QueueItem { media, autoplay: true, start_time: 0.0 }];
+        let msg = queue_load(1, "t", "s", &items, 0, RepeatMode::RepeatOff);
+        let p = parse_payload(&msg);
+        assert_eq!(p["items"][0]["media"]["contentId"], "id-123");
+        assert_eq!(p["items"][0]["media"]["contentUrl"], "http://example.com/v.mp4");
     }
 
     #[test]

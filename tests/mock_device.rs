@@ -1013,3 +1013,28 @@ mod serve_extra_tests {
         assert!(!server.lan_ip().is_empty());
     }
 }
+
+#[tokio::test]
+async fn test_media_status_with_only_content_url() {
+    // Media started by another sender may only carry contentUrl.
+    let json = json!({
+        "type": "MEDIA_STATUS",
+        "status": [{
+            "mediaSessionId": 7,
+            "playerState": "PLAYING",
+            "currentTime": 12.5,
+            "volume": { "level": 1.0, "muted": false },
+            "media": {
+                "contentUrl": "http://example.com/v.mp4",
+                "contentType": "video/mp4",
+                "streamType": "BUFFERED"
+            }
+        }],
+        "requestId": 0
+    });
+
+    let status = oxicast::__test_util::parse_media_status_from_json(&json).unwrap();
+    let media = status.media.expect("media should be parsed");
+    assert_eq!(media.content_id, "http://example.com/v.mp4");
+    assert_eq!(media.content_url.as_deref(), Some("http://example.com/v.mp4"));
+}
