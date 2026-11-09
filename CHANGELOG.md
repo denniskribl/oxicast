@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Breaking:** `MediaInfo` and `DeviceInfo` have new public fields; code constructing them with struct literals needs to set `content_url` / `capabilities`.
-- Dependency updates: `mdns-sd` 0.20, `tokio` 1.52, `axum` 0.8.9, `serde_json` 1.0.150; CI actions bumped (`actions/checkout` v6, `actions/deploy-pages` v5, `cargo-deny-action` 2.0.17).
+- Dependency updates: `mdns-sd` 0.20, `tokio` 1.54, `axum` 0.8.9, `serde_json` 1.0.150; CI actions bumped (`actions/checkout` v6, `actions/deploy-pages` v5, `cargo-deny-action` 2.0.17).
 
 ## [0.0.3] - 2026-04-09
 
