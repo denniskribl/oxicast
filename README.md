@@ -163,6 +163,10 @@ RUST_LOG=oxicast=trace cargo run --example device_test --all-features
 
 ---
 
+## 🗺️ Roadmap
+
+1.0 is planned: all breaking changes ship together, then the API stays stable across 1.x. See the [Roadmap to 1.0](https://github.com/denniskribl/oxicast/issues/39) for what's included and how to give feedback.
+
 ## License
 
 Licensed under either of [Apache License 2.0](./LICENSE-APACHE) or [MIT](./LICENSE-MIT) at your option.
