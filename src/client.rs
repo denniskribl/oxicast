@@ -44,9 +44,12 @@ impl TaskHandles {
             h.abort();
             let _ = h.await;
         }
-        if let Some(h) = self.writer.take() {
-            h.abort();
-            let _ = h.await;
+        if let Some(mut h) = self.writer.take() {
+            // Give the writer a moment to flush already-queued messages.
+            if tokio::time::timeout(WRITER_FLUSH_TIMEOUT, &mut h).await.is_err() {
+                h.abort();
+                let _ = h.await;
+            }
         }
         if let Some(h) = self.heartbeat.take() {
             h.abort();
@@ -54,6 +57,9 @@ impl TaskHandles {
         }
     }
 }
+
+/// How long shutdown waits for the writer task to flush queued messages.
+const WRITER_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// A connected Google Cast device client.
 ///
@@ -298,12 +304,33 @@ impl CastClient {
     /// Stops media playback, closes the connection, and shuts down all
     /// background tasks. The device stops immediately — it won't continue
     /// playing buffered content. Auto-reconnect is disabled.
+    ///
+    /// To leave the receiver playing (e.g. after [`join_session`](Self::join_session)
+    /// on media started by another sender), use [`close`](Self::close) instead.
     pub async fn disconnect(&self) -> Result<()> {
+        self.shutdown(true).await
+    }
+
+    /// Close the connection without stopping playback.
+    ///
+    /// Sends CLOSE for the joined/launched application transport and the
+    /// receiver, then shuts down all background tasks like
+    /// [`disconnect`](Self::disconnect), but never sends a media STOP, so
+    /// whatever is playing keeps playing. Auto-reconnect is disabled.
+    pub async fn close(&self) -> Result<()> {
+        self.shutdown(false).await
+    }
+
+    async fn shutdown(&self, stop_media: bool) -> Result<()> {
         self.inner.shutting_down.store(true, Ordering::Release);
-        // Stop media first so the device stops playback immediately
-        // instead of draining its buffer for several more seconds.
         let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            self.stop_media().await.ok();
+            if stop_media {
+                // Stop media first so the device stops playback immediately
+                // instead of draining its buffer for several more seconds.
+                self.stop_media().await.ok();
+            } else if let Some(tid) = self.inner.transport_id.lock().await.clone() {
+                self.send(channel::connection::close_msg(&tid)).await.ok();
+            }
             self.send(channel::connection::close_msg("receiver-0")).await.ok();
         })
         .await;
@@ -914,6 +941,15 @@ async fn writer_loop(
             }
             _ = cancel.cancelled() => {
                 tracing::debug!("writer task cancelled");
+                // Flush messages queued before cancellation (e.g. the STOP/CLOSE
+                // sent by disconnect()) and close TLS cleanly. The caller bounds
+                // how long this may take before aborting the task.
+                while let Ok(msg) = rx.try_recv() {
+                    if framing::write_message(&mut writer, &msg).await.is_err() {
+                        break;
+                    }
+                }
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut writer).await;
                 break;
             }
         }

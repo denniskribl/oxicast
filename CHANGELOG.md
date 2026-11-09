@@ -14,8 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DeviceInfo::capabilities` exposing the device's audio/video output capabilities from the mDNS `ca` record, plus the new `Capability` enum ([#20](https://github.com/denniskribl/oxicast/pull/20)). Thanks @Mossop!
 - `MediaInfo::content_url` to set the `contentUrl` property in LOAD and QUEUE_LOAD/QUEUE_INSERT requests ([#21](https://github.com/denniskribl/oxicast/pull/21)). Thanks @Mossop!
 - `CastClientBuilder::connect_timeout` (default 10s) for the TCP connect + TLS handshake.
+- `CastClient::close()`: transport-only shutdown that closes the app and receiver channels without sending a media STOP, so playback (e.g. of a joined session) keeps running. `disconnect()` is unchanged and still stops media.
 
 ### Fixed
+- `disconnect()` could drop its final STOP/CLOSE messages because the writer task was aborted before flushing its queue; shutdown now flushes queued messages (bounded to 500 ms) and closes TLS cleanly.
 - MEDIA_STATUS entries that only carry `contentUrl` (e.g. media started by other senders) are now parsed instead of yielding `media: None`.
 - Connecting and heartbeat detection can no longer hang indefinitely ([#22](https://github.com/denniskribl/oxicast/pull/22)). Thanks @Mossop!
 - `tokio-rustls` no longer enables its default `aws-lc-rs` feature, so dependents don't pull in `aws-lc-sys` even though `ring` is the only backend used ([#25](https://github.com/denniskribl/oxicast/pull/25)). Thanks @vyrti!

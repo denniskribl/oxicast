@@ -247,3 +247,51 @@ async fn join_another_session_closes_previous_and_drops_stale_media_session() {
 
     client.disconnect().await.expect("disconnect");
 }
+
+/// Collects everything the client sent until the mock connection closes.
+async fn drain(rx: &mut mpsc::UnboundedReceiver<Received>) -> Vec<Received> {
+    let mut out = Vec::new();
+    while let Ok(Some(msg)) = tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
+        out.push(msg);
+    }
+    out
+}
+
+#[tokio::test]
+async fn close_leaves_playback_running() {
+    let (port, mut seen) = start_mock_receiver().await;
+    let client = connect(port).await;
+
+    let status = client.receiver_status().await.expect("receiver status");
+    let app1 = status.applications.iter().find(|a| a.transport_id == "app-1").expect("app-1");
+    client.join_session(app1).await.expect("join");
+
+    client.close().await.expect("close");
+    assert!(!client.is_connected());
+
+    let sent = drain(&mut seen).await;
+    assert!(
+        !sent.iter().any(|m| m.payload["type"] == "STOP"),
+        "close() must not stop media: {sent:?}"
+    );
+    assert!(sent.iter().any(|m| m.payload["type"] == "CLOSE" && m.destination == "app-1"));
+    assert!(sent.iter().any(|m| m.payload["type"] == "CLOSE" && m.destination == "receiver-0"));
+}
+
+#[tokio::test]
+async fn disconnect_still_stops_media() {
+    let (port, mut seen) = start_mock_receiver().await;
+    let client = connect(port).await;
+
+    let status = client.receiver_status().await.expect("receiver status");
+    let app1 = status.applications.iter().find(|a| a.transport_id == "app-1").expect("app-1");
+    client.join_session(app1).await.expect("join");
+
+    client.disconnect().await.expect("disconnect");
+
+    let sent = drain(&mut seen).await;
+    let stop = sent.iter().find(|m| m.payload["type"] == "STOP").expect("disconnect sends STOP");
+    assert_eq!(stop.destination, "app-1");
+    assert_eq!(stop.payload["mediaSessionId"], 11);
+    assert!(sent.iter().any(|m| m.payload["type"] == "CLOSE" && m.destination == "receiver-0"));
+}

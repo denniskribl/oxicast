@@ -35,7 +35,8 @@ let client = CastClient::builder("192.168.1.100", 8009)
 | `builder(host, port)` | `CastClientBuilder` | Start building with custom config |
 | `is_connected()` | `bool` | Check if the connection is alive |
 | `connection_state()` | `ConnectionState` | `Connected`, `Disconnected`, or `Reconnecting { attempt }` |
-| `disconnect()` | `Result<()>` | Graceful shutdown, closes event channel |
+| `disconnect()` | `Result<()>` | Stops media, then graceful shutdown; closes event channel |
+| `close()` | `Result<()>` | Graceful shutdown without stopping media (leave a joined session playing) |
 | `reconnect()` | `Result<()>` | Manual reconnect (serialized with auto-reconnect) |
 
 ---
