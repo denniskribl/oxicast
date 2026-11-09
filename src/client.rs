@@ -105,6 +105,7 @@ pub(crate) struct ClientConfig {
     pub reconnect_delay: std::time::Duration,
     pub heartbeat_interval: std::time::Duration,
     pub heartbeat_timeout: std::time::Duration,
+    pub connect_timeout: std::time::Duration,
     pub verify_tls: bool,
 }
 
@@ -160,7 +161,13 @@ impl CastClient {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         // Establish TLS connection
-        let tls_stream = connection::connect(&config.host, config.port, config.verify_tls).await?;
+        let tls_stream = connection::connect(
+            &config.host,
+            config.port,
+            config.verify_tls,
+            config.connect_timeout,
+        )
+        .await?;
         let (read_half, write_half) = io::split(tls_stream);
 
         // Create channels and shared state
@@ -223,6 +230,7 @@ impl CastClient {
             reconnect_delay: config.reconnect_delay,
             heartbeat_interval: config.heartbeat_interval,
             heartbeat_timeout: config.heartbeat_timeout,
+            connect_timeout: config.connect_timeout,
             verify_tls: config.verify_tls,
         };
 
@@ -352,7 +360,13 @@ impl CastClient {
         }
 
         // 2. Establish new TLS connection
-        let tls_stream = connection::connect(&config.host, config.port, config.verify_tls).await?;
+        let tls_stream = connection::connect(
+            &config.host,
+            config.port,
+            config.verify_tls,
+            config.connect_timeout,
+        )
+        .await?;
         let (read_half, write_half) = io::split(tls_stream);
 
         // Re-check shutting_down after the TLS handshake. If disconnect() was
@@ -432,6 +446,15 @@ impl CastClient {
 
         router::parse_receiver_status_from_json(&json)
             .ok_or_else(|| Error::Internal("failed to parse receiver status".into()))
+    }
+
+    /// Connects to an already running application
+    pub async fn join_session(&self, application: &Application) -> Result<()> {
+        self.send(channel::connection::connect_msg(&application.transport_id)).await?;
+        *self.inner.transport_id.lock().await = Some(application.transport_id.clone());
+        *self.inner.session_id.lock().await = Some(application.session_id.clone());
+
+        Ok(())
     }
 
     /// Launch an application on the device.

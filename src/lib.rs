@@ -90,6 +90,6 @@ pub use client::CastClient;
 pub use error::{Error, Result};
 pub use event::CastEvent;
 pub use types::{
-    Application, CastApp, DeviceInfo, IdleReason, Image, MediaInfo, MediaMetadata, MediaStatus,
-    PlayerState, QueueItem, ReceiverStatus, RepeatMode, StreamType, Volume,
+    Application, Capability, CastApp, DeviceInfo, IdleReason, Image, MediaInfo, MediaMetadata,
+    MediaStatus, PlayerState, QueueItem, ReceiverStatus, RepeatMode, StreamType, Volume,
 };

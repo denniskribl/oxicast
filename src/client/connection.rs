@@ -16,6 +16,7 @@
 use rustls::ClientConfig;
 use rustls::pki_types::ServerName;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
@@ -25,7 +26,29 @@ use crate::error::{Error, Result};
 /// Establish a TLS connection to a Cast device.
 ///
 /// Returns the connected TLS stream which can be split into read/write halves.
-pub async fn connect(host: &str, port: u16, verify_tls: bool) -> Result<TlsStream<TcpStream>> {
+///
+/// `timeout` bounds the whole attempt (TCP connect and TLS handshake). Without
+/// it, an unreachable device or one that accepts the TCP connection but never
+/// completes the handshake would block the caller indefinitely.
+pub async fn connect(
+    host: &str,
+    port: u16,
+    verify_tls: bool,
+    timeout: Duration,
+) -> Result<TlsStream<TcpStream>> {
+    match tokio::time::timeout(timeout, connect_inner(host, port, verify_tls)).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::debug!("timed out connecting to cast device at {host}:{port}");
+            Err(Error::Connect(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("timed out after {timeout:?}"),
+            )))
+        }
+    }
+}
+
+async fn connect_inner(host: &str, port: u16, verify_tls: bool) -> Result<TlsStream<TcpStream>> {
     let addr = format!("{host}:{port}");
     tracing::debug!("connecting to cast device at {addr}");
 
@@ -120,5 +143,33 @@ impl rustls::client::danger::ServerCertVerifier for NoCertVerification {
         rustls::crypto::ring::default_provider()
             .signature_verification_algorithms
             .supported_schemes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn test_connect_times_out_when_tls_handshake_stalls() {
+        // Accepts the TCP connection but never responds to the TLS handshake.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let start = std::time::Instant::now();
+        let result = connect("127.0.0.1", port, false, Duration::from_millis(200)).await;
+
+        match result {
+            Err(Error::Connect(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
+            other => panic!("expected connect timeout, got {:?}", other.map(|_| ())),
+        }
+        assert!(start.elapsed() < Duration::from_secs(5));
+        server.abort();
     }
 }
