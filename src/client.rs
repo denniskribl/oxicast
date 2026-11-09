@@ -534,7 +534,10 @@ impl CastClient {
         let (id, rx) = self.inner.request_tracker.register().await;
         self.send(channel::receiver::launch_app(id, app.app_id())).await?;
         let json = self.inner.request_tracker.wait_for(id, rx).await?;
-        tracing::debug!("launch_app response: {}", json);
+        tracing::debug!(
+            "launch_app response received ({} applications)",
+            json.pointer("/status/applications").and_then(|a| a.as_array()).map_or(0, |a| a.len())
+        );
         Self::check_device_error(&json)?;
 
         // Custom receivers may take longer to load. If the first response doesn't
@@ -937,6 +940,28 @@ impl CastClient {
 // ── Background Tasks ─────────────────────────────────────────
 
 /// Writer task — owns the write half, sends messages from the channel.
+/// Loggable summary of a message payload. Payloads are never logged in full:
+/// media URLs, `customData` and receiver responses can carry credentials such
+/// as short-lived bearer tokens.
+struct PayloadSummary {
+    kind: String,
+    request_id: u64,
+    len: usize,
+}
+
+impl PayloadSummary {
+    fn of(payload: Option<&str>) -> Self {
+        let payload = payload.unwrap_or("");
+        let json = serde_json::from_str::<serde_json::Value>(payload).ok();
+        let field = |k: &str| json.as_ref().and_then(|j| j.get(k).cloned());
+        Self {
+            kind: field("type").and_then(|t| t.as_str().map(str::to_owned)).unwrap_or_default(),
+            request_id: field("requestId").and_then(|r| r.as_u64()).unwrap_or(0),
+            len: payload.len(),
+        }
+    }
+}
+
 async fn writer_loop(
     mut writer: WriteHalf<TlsStream<TcpStream>>,
     mut rx: mpsc::Receiver<crate::proto::CastMessage>,
@@ -949,10 +974,13 @@ async fn writer_loop(
             msg = rx.recv() => {
                 match msg {
                     Some(msg) => {
+                        let summary = PayloadSummary::of(msg.payload_utf8.as_deref());
                         tracing::trace!(
                             ns = %msg.namespace,
                             dst = %msg.destination_id,
-                            payload = ?msg.payload_utf8.as_deref().unwrap_or(""),
+                            r#type = summary.kind,
+                            request_id = summary.request_id,
+                            bytes = summary.len,
                             "→ send"
                         );
                         if let Err(e) = framing::write_message(&mut writer, &msg).await {
@@ -1002,11 +1030,14 @@ async fn reader_loop(mut reader: ReadHalf<TlsStream<TcpStream>>, ctx: ReaderCont
                 match result {
                     Ok(msg) => {
                         heartbeat::touch(&ctx.last_activity);
+                        let summary = PayloadSummary::of(msg.payload_utf8.as_deref());
                         tracing::trace!(
                             ns = %msg.namespace,
                             src = %msg.source_id,
                             dst = %msg.destination_id,
-                            payload = ?msg.payload_utf8.as_deref().unwrap_or(""),
+                            r#type = summary.kind,
+                            request_id = summary.request_id,
+                            bytes = summary.len,
                             "← recv"
                         );
                         router::route(&msg, &ctx.request_tracker, &ctx.event_tx, &ctx.state, &ctx.write_tx).await;
