@@ -54,6 +54,7 @@ let volume = client.set_muted(true).await?;
 |--------|---------|-------------|
 | `receiver_status()` | `Result<ReceiverStatus>` | Get current device status (volume, apps) |
 | `launch_app(app)` | `Result<Application>` | Launch an app, connects to its transport |
+| `join_session(&app)` | `Result<Option<MediaStatus>>` | Join an app that is already running (e.g. started by another sender) |
 | `stop_app(session_id)` | `Result<()>` | Stop a running app |
 | `set_volume(level)` | `Result<Volume>` | Set volume (0.0 to 1.0) |
 | `set_muted(muted)` | `Result<Volume>` | Mute or unmute |
