@@ -37,15 +37,26 @@ impl TaskHandles {
         Self { cancel, reader: None, writer: None, heartbeat: None }
     }
 
-    /// Abort all running tasks and wait for them to finish.
-    async fn shutdown(&mut self) {
+    /// Stop all running tasks and wait for them to finish.
+    ///
+    /// With `flush`, the writer gets [`WRITER_FLUSH_TIMEOUT`] to send messages
+    /// that were already queued (used by `disconnect()`/`close()`). Without it
+    /// (reconnect), the writer is aborted before cancellation so stale queued
+    /// commands are never sent on the old connection.
+    async fn shutdown(&mut self, flush: bool) {
+        let mut writer = self.writer.take();
+        if !flush {
+            if let Some(h) = writer.take() {
+                h.abort();
+                let _ = h.await;
+            }
+        }
         self.cancel.cancel();
         if let Some(h) = self.reader.take() {
             h.abort();
             let _ = h.await;
         }
-        if let Some(mut h) = self.writer.take() {
-            // Give the writer a moment to flush already-queued messages.
+        if let Some(mut h) = writer {
             if tokio::time::timeout(WRITER_FLUSH_TIMEOUT, &mut h).await.is_err() {
                 h.abort();
                 let _ = h.await;
@@ -336,7 +347,7 @@ impl CastClient {
         .await;
         self.inner.alive.store(false, Ordering::Release);
         // Deterministically stop all background tasks
-        self.inner.task_handles.lock().await.shutdown().await;
+        self.inner.task_handles.lock().await.shutdown(true).await;
         self.inner.request_tracker.clear().await;
         let _ = self.inner.state.connection_tx.send(ConnectionState::Disconnected);
         // Emit terminal Disconnected event, then drop the sender so
@@ -383,7 +394,7 @@ impl CastClient {
         // 1. Deterministically shut down all old tasks
         {
             let mut handles = self.inner.task_handles.lock().await;
-            handles.shutdown().await;
+            handles.shutdown(false).await;
         }
 
         // 2. Establish new TLS connection
@@ -481,11 +492,13 @@ impl CastClient {
     /// Use [`receiver_status`](Self::receiver_status) to find the running
     /// [`Application`]. If the app supports the media namespace, the current
     /// media status is fetched so that playback controls work immediately;
-    /// it is returned (or `None` if the app is not playing anything or does
-    /// not support media).
+    /// it is returned (or `None` if the app is not playing anything, does not
+    /// support media, or the status request failed — the join still succeeded
+    /// and controls start working on the next status broadcast).
     pub async fn join_session(&self, application: &Application) -> Result<Option<MediaStatus>> {
         // Close the previously joined app's transport, if any.
         let previous = self.inner.transport_id.lock().await.clone();
+        let rejoining_other_app = previous.as_deref() != Some(application.transport_id.as_str());
         if let Some(prev) = previous.filter(|t| *t != application.transport_id) {
             self.send(channel::connection::close_msg(&prev)).await?;
         }
@@ -493,14 +506,27 @@ impl CastClient {
         self.send(channel::connection::connect_msg(&application.transport_id)).await?;
         *self.inner.transport_id.lock().await = Some(application.transport_id.clone());
         *self.inner.session_id.lock().await = Some(application.session_id.clone());
-        // A media session id from a previously controlled app is meaningless here.
-        self.inner.state.media_session_id.store(0, std::sync::atomic::Ordering::Relaxed);
+        if rejoining_other_app {
+            // A media session id from a previously controlled app is meaningless here.
+            self.inner.state.media_session_id.store(0, std::sync::atomic::Ordering::Relaxed);
+        }
 
         if !application.namespaces.iter().any(|ns| ns == channel::ns::NS_MEDIA) {
             return Ok(None);
         }
         // The router records the media session id from the MEDIA_STATUS reply.
-        self.media_status().await
+        // The join itself has succeeded at this point, so a failed status fetch
+        // is not an error: controls start working on the next status broadcast.
+        match self.media_status().await {
+            Ok(status) => Ok(status),
+            Err(e) => {
+                tracing::warn!(
+                    "joined {} but fetching media status failed: {e}",
+                    application.transport_id
+                );
+                Ok(None)
+            }
+        }
     }
 
     /// Launch an application on the device.

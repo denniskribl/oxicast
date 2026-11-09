@@ -73,8 +73,8 @@ fn app(transport: &str, session: &str) -> Value {
     })
 }
 
-/// Starts a mock receiver that runs two apps (`app-1` with media session 11,
-/// `app-2` with media session 22). Returns its port and a stream of every
+/// Starts a mock receiver that runs three apps (`app-1` with media session 11,
+/// `app-2` with media session 22, `silent-app` never answers media requests). Returns its port and a stream of every
 /// non-heartbeat message the client sends.
 async fn start_mock_receiver() -> (u16, mpsc::UnboundedReceiver<Received>) {
     let certs = vec![
@@ -120,7 +120,7 @@ async fn start_mock_receiver() -> (u16, mpsc::UnboundedReceiver<Received>) {
                         "requestId": request_id,
                         "status": {
                             "volume": {"level": 0.5, "muted": false},
-                            "applications": [app("app-1", "session-1"), app("app-2", "session-2")],
+                            "applications": [app("app-1", "session-1"), app("app-2", "session-2"), app("silent-app", "session-3")],
                         }
                     }),
                 )),
@@ -290,8 +290,34 @@ async fn disconnect_still_stops_media() {
     client.disconnect().await.expect("disconnect");
 
     let sent = drain(&mut seen).await;
-    let stop = sent.iter().find(|m| m.payload["type"] == "STOP").expect("disconnect sends STOP");
-    assert_eq!(stop.destination, "app-1");
-    assert_eq!(stop.payload["mediaSessionId"], 11);
-    assert!(sent.iter().any(|m| m.payload["type"] == "CLOSE" && m.destination == "receiver-0"));
+    let stop =
+        sent.iter().position(|m| m.payload["type"] == "STOP").expect("disconnect sends STOP");
+    assert_eq!(sent[stop].destination, "app-1");
+    assert_eq!(sent[stop].payload["mediaSessionId"], 11);
+    let close = sent
+        .iter()
+        .position(|m| m.payload["type"] == "CLOSE" && m.destination == "receiver-0")
+        .expect("disconnect sends CLOSE to receiver-0");
+    assert!(stop < close, "STOP must be sent before CLOSE");
+    // Behaviour downstream users rely on: disconnect() does not CLOSE the app transport.
+    assert!(!sent.iter().any(|m| m.payload["type"] == "CLOSE" && m.destination == "app-1"));
+}
+
+#[tokio::test]
+async fn join_session_succeeds_when_status_fetch_times_out() {
+    let (port, mut seen) = start_mock_receiver().await;
+    let client = oxicast::CastClient::builder("127.0.0.1", port)
+        .request_timeout(Duration::from_millis(300))
+        .connect()
+        .await
+        .expect("connect");
+
+    let status = client.receiver_status().await.expect("receiver status");
+    let silent = status.applications.iter().find(|a| a.transport_id == "silent-app").expect("app");
+
+    let media = client.join_session(silent).await.expect("join must not fail on status timeout");
+    assert!(media.is_none());
+    let connect = expect_msg(&mut seen, |m| m.destination == "silent-app").await;
+    assert_eq!(connect.payload["type"], "CONNECT");
+    client.disconnect().await.expect("disconnect");
 }
