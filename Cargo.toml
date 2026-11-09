@@ -11,7 +11,7 @@ homepage = "https://github.com/denniskribl/oxicast"
 categories = ["multimedia", "network-programming", "asynchronous"]
 documentation = "https://docs.rs/oxicast"
 readme = "README.md"
-exclude = ["website/", "docs/", ".github/", "deny.toml", "proto/", "tests/fixtures/", "tests/mock_receiver.rs"]
+exclude = ["website/", "docs/", ".github/", "deny.toml", "proto/", "tests/fixtures/", "tests/common/", "tests/mock_receiver.rs", "tests/log_redaction.rs"]
 
 [dependencies]
 # Async runtime

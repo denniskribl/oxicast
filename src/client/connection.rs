@@ -58,9 +58,9 @@ async fn connect_inner(host: &str, port: u16, verify_tls: bool) -> Result<TlsStr
     }
     .map_err(Error::Connect)?;
 
-    // Always use ring explicitly instead of the process-wide default provider:
-    // if the application's dependency graph also enables aws-lc-rs, rustls
-    // cannot pick a default and `ClientConfig::builder()` would panic.
+    // Use ring explicitly instead of the process-wide default provider, so the
+    // connection doesn't depend on (or mix with) whatever provider the
+    // application installed globally; the certificate verifier uses ring too.
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let builder = ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
