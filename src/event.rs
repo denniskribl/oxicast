@@ -63,6 +63,20 @@ pub enum CastEvent {
         idle_reason: IdleReason,
     },
 
+    /// The device failed to load media.
+    ///
+    /// Emitted for every `LOAD_FAILED` message. A failure that arrives before
+    /// [`load_media()`](crate::CastClient::load_media) returns is also reported as its error,
+    /// but the device can report the failure much later (for example after failing to
+    /// connect to the media URL), by which time `load_media()` has already returned.
+    #[non_exhaustive]
+    LoadFailed {
+        /// The ID of the queue item that failed to load, if given.
+        item_id: Option<i64>,
+        /// The device's detailed error code, if given.
+        detailed_error_code: Option<i64>,
+    },
+
     /// A message was received on an unhandled or custom namespace.
     RawMessage {
         /// The Cast namespace of the message.

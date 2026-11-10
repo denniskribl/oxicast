@@ -128,10 +128,14 @@ pub(crate) async fn route(
                         }
                     }
                     MediaMessageType::LoadFailed => {
-                        let item_id = json.get("itemId").and_then(|v| v.as_i64()).unwrap_or(0);
+                        let item_id = json.get("itemId").and_then(|v| v.as_i64());
+                        let detailed_error_code =
+                            json.get("detailedErrorCode").and_then(|v| v.as_i64());
                         tracing::debug!(
-                            "LOAD_FAILED for item {item_id}, requestId={}",
-                            json.get("requestId").and_then(|r| r.as_u64()).unwrap_or(0)
+                            "LOAD_FAILED for item {}, requestId={}, detailedErrorCode={:?}",
+                            item_id.unwrap_or(0),
+                            json.get("requestId").and_then(|r| r.as_u64()).unwrap_or(0),
+                            detailed_error_code
                         );
                         // Resolve the pending request so load_media() returns an error
                         if let Some(request_id) = json.get("requestId").and_then(|r| r.as_u64()) {
@@ -139,6 +143,10 @@ pub(crate) async fn route(
                                 request_tracker.resolve(request_id as u32, json.clone()).await;
                             }
                         }
+                        // The failure may arrive after load_media() has already returned, so
+                        // always report it as an event too.
+                        let _ = event_tx
+                            .try_send(CastEvent::LoadFailed { item_id, detailed_error_code });
                     }
                     MediaMessageType::LoadCancelled => {
                         tracing::debug!("LOAD_CANCELLED");
@@ -628,6 +636,50 @@ mod tests {
 
         let value = rx.await.unwrap();
         assert_eq!(value["type"], "LOAD_FAILED");
+    }
+
+    #[tokio::test]
+    async fn test_load_failed_emits_event() {
+        let (tracker, event_tx, mut event_rx, state, write_tx, _write_rx) = setup().await;
+
+        // No request is pending, as when the failure arrives after load_media() returned.
+        let payload = serde_json::json!({
+            "type": "LOAD_FAILED",
+            "requestId": 7,
+            "itemId": 1,
+            "detailedErrorCode": 104
+        });
+        let msg = build_message(ns::NS_MEDIA, "web-5", "sender-0", &payload.to_string());
+        route(&msg, &tracker, &event_tx, &state, &write_tx).await;
+
+        assert_eq!(
+            event_rx.try_recv().unwrap(),
+            CastEvent::LoadFailed { item_id: Some(1), detailed_error_code: Some(104) }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_load_failed_while_pending_resolves_request_and_emits_event() {
+        let (tracker, event_tx, mut event_rx, state, write_tx, _write_rx) = setup().await;
+        // A request is pending, as when the failure arrives before load_media() returns.
+        let (id, rx) = tracker.register().await;
+
+        let payload = serde_json::json!({
+            "type": "LOAD_FAILED",
+            "requestId": id,
+            "itemId": 1,
+            "detailedErrorCode": 104
+        });
+        let msg = build_message(ns::NS_MEDIA, "web-5", "sender-0", &payload.to_string());
+        route(&msg, &tracker, &event_tx, &state, &write_tx).await;
+
+        let value = rx.await.unwrap();
+        assert_eq!(value, payload);
+        assert_eq!(
+            event_rx.try_recv().unwrap(),
+            CastEvent::LoadFailed { item_id: Some(1), detailed_error_code: Some(104) }
+        );
+        assert!(event_rx.try_recv().is_err());
     }
 
     #[tokio::test]

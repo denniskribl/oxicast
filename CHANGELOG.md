@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `CastEvent::LoadFailed`, emitted for every `LOAD_FAILED` message. Devices can report a load failure long after `load_media()` has returned (for example after failing to connect to the media URL), which was previously only visible in debug logs.
+
 ## [0.0.4] - 2026-11-09
 
 ### Added
