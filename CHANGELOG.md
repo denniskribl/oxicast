@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-11-11
+
 ### Added
-- `CastEvent::LoadFailed`, emitted for every `LOAD_FAILED` message. Devices can report a load failure long after `load_media()` has returned (for example after failing to connect to the media URL), which was previously only visible in debug logs.
+- `CastEvent::LoadFailed { item_id, detailed_error_code }`, emitted for every `LOAD_FAILED` message. Devices can report a load failure long after `load_media()` has returned (for example after failing to connect to the media URL), which was previously only visible in debug logs. A failure that arrives while `load_media()` is still waiting is reported both as its error and as this event ([#40](https://github.com/denniskribl/oxicast/pull/40)). Thanks @Mossop!
 
 ## [0.0.4] - 2026-11-09
 

@@ -175,6 +175,7 @@ let receiver_rx = client.watch_receiver_status(); // watch::Receiver<Option<Rece
 | `ReceiverStatusChanged(ReceiverStatus)` | Volume, apps, or device state changed |
 | `MediaStatusChanged(MediaStatus)` | Playback state, position, or media changed |
 | `MediaSessionEnded { media_session_id, idle_reason }` | A media session ended |
+| `LoadFailed { item_id, detailed_error_code }` | The device failed to load media, also when it reports this after `load_media()` returned |
 | `RawMessage { namespace, source, destination, payload }` | Unhandled or custom namespace message |
 
 ---
