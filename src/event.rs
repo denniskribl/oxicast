@@ -69,6 +69,7 @@ pub enum CastEvent {
     /// [`load_media()`](crate::CastClient::load_media) returns is also reported as its error,
     /// but the device can report the failure much later (for example after failing to
     /// connect to the media URL), by which time `load_media()` has already returned.
+    #[non_exhaustive]
     LoadFailed {
         /// The ID of the queue item that failed to load, if given.
         item_id: Option<i64>,

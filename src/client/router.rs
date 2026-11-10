@@ -659,6 +659,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_load_failed_while_pending_resolves_request_and_emits_event() {
+        let (tracker, event_tx, mut event_rx, state, write_tx, _write_rx) = setup().await;
+        // A request is pending, as when the failure arrives before load_media() returns.
+        let (id, rx) = tracker.register().await;
+
+        let payload = serde_json::json!({
+            "type": "LOAD_FAILED",
+            "requestId": id,
+            "itemId": 1,
+            "detailedErrorCode": 104
+        });
+        let msg = build_message(ns::NS_MEDIA, "web-5", "sender-0", &payload.to_string());
+        route(&msg, &tracker, &event_tx, &state, &write_tx).await;
+
+        let value = rx.await.unwrap();
+        assert_eq!(value, payload);
+        assert_eq!(
+            event_rx.try_recv().unwrap(),
+            CastEvent::LoadFailed { item_id: Some(1), detailed_error_code: Some(104) }
+        );
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
     async fn test_load_cancelled_resolves_request() {
         let (tracker, event_tx, _event_rx, state, write_tx, _write_rx) = setup().await;
         let (id, rx) = tracker.register().await;
